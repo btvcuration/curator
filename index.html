@@ -4,7 +4,33 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Curator</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    animation: {
+                        'slide-up': 'slideUp 0.4s ease-out forwards',
+                        'spin-slow': 'spin 3s linear infinite',
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'bounce': 'bounce 1s infinite',
+                    },
+                    keyframes: {
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     
     <script type="importmap">
     {
@@ -15,23 +41,15 @@
         }
     }
     </script>
-    
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
     <style>
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes slide-up {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .animate-slide-up { animation: slide-up 0.4s ease-out forwards; }
-        .animate-spin-slow { animation: spin 3s linear infinite; }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-gray-50 text-gray-800 font-sans">
     <div id="root"></div>
 
     <script type="text/babel" data-type="module">
@@ -44,12 +62,12 @@
             AlertTriangle, Thermometer, Tag, Quote 
         } from 'lucide-react';
 
-        // --- CONFIGURATION ---
+        // --- 설정 (공유해주신 주소를 직접 넣었습니다) ---
         const GAS_API_URL = "https://script.google.com/macros/s/AKfycbxrhGuW2iFJ-RXV6Ad7lfY2_k4ZvGuptYRF7ey9PxoKKn34639lf7BqzevxTO-PXksp/exec"; 
         const CACHE_KEY = "AI_CURATOR_DATA_V1";
         const CACHE_EXPIRY = 1000 * 60 * 60 * 6; // 6시간
 
-        // --- HELPER FUNCTIONS ---
+        // --- Helper Functions ---
         const calculateSimilarity = (s1, s2) => {
             const clean1 = String(s1).replace(/[^a-zA-Z0-9가-힣]/g, "").toLowerCase();
             const clean2 = String(s2).replace(/[^a-zA-Z0-9가-힣]/g, "").toLowerCase();
@@ -63,11 +81,11 @@
 
         const fetchRealWeather = async () => {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000); // 2초 타임아웃
+            const timeoutId = setTimeout(() => controller.abort(), 2000); 
             try {
                 const res = await fetch('https://wttr.in/?format=j1', { signal: controller.signal });
                 clearTimeout(timeoutId);
-                if (!res.ok) throw new Error("Weather API Response Error");
+                if (!res.ok) throw new Error("Weather API Error");
                 const data = await res.json();
                 const current = data.current_condition[0];
                 const desc = current.weatherDesc[0].value.toLowerCase();
@@ -76,7 +94,7 @@
                 else if (desc.includes('snow') || desc.includes('ice')) simplifiedDesc = "눈";
                 else if (desc.includes('cloud') || desc.includes('overcast')) simplifiedDesc = "흐림";
                 else if (desc.includes('fog') || desc.includes('mist')) simplifiedDesc = "안개";
-                return { temp: `${current.temp_C}°C`, weather: simplifiedDesc, rawDesc: desc };
+                return { temp: `${current.temp_C}°C`, weather: simplifiedDesc };
             } catch (e) {
                 const month = new Date().getMonth() + 1;
                 let season = "맑음";
@@ -118,6 +136,7 @@
             return 'bg-blue-50 text-blue-600 border-blue-100';
         };
 
+        // --- Components ---
         const SearchBar = ({ query, setQuery, handleSearch, setShowFilters, compact = false, hasFilters = false }) => (
             <div className={`relative group z-10 transition-all ${compact ? 'shadow-none' : 'shadow-sm'}`}>
                 <input
@@ -125,7 +144,7 @@
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    placeholder="검색어를 입력하세요"
+                    placeholder="검색어를 입력하세요 (예: 크리스마스 로맨스)"
                     className={`w-full bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-gray-300 ${compact ? 'py-3 pl-4 pr-20 text-base rounded-xl' : 'p-5 pr-24 text-lg rounded-2xl'}`}
                 />
                 <div className={`absolute right-2 flex gap-1 ${compact ? 'top-2' : 'top-3'}`}>
@@ -157,7 +176,7 @@
             const [toastMessage, setToastMessage] = useState(""); 
             const today = new Date();
             const dateString = `${today.getFullYear()}.${today.getMonth() + 1}.${today.getDate()}`;
-            const [sheetName, setSheetName] = useState("데이터 연결 대기중...");
+            const [sheetName, setSheetName] = useState("연결 중...");
             const [selectedGenres, setSelectedGenres] = useState([]);
             const [priceType, setPriceType] = useState("all"); 
             const [minPrice, setMinPrice] = useState(0); 
@@ -185,10 +204,13 @@
                 }
             }, [isLoadingData]);
 
+            // --- 초기화 및 데이터 로드 (핵심 수정 부분) ---
             useEffect(() => {
                 const initApp = async () => {
+                    // 1. 캐시 확인
                     const cached = localStorage.getItem(CACHE_KEY);
                     let hasCache = false;
+
                     if (cached) {
                         try {
                             const { data, timestamp, sheetName, todaysPicks } = JSON.parse(cached);
@@ -203,6 +225,7 @@
                         } catch (e) { localStorage.removeItem(CACHE_KEY); }
                     }
 
+                    // 2. 날씨 (병렬)
                     fetchRealWeather().then(weatherData => {
                         const month = new Date().getMonth() + 1;
                         const seasonalTrends = 
@@ -212,38 +235,35 @@
                         setContext({ weather: weatherData.weather, temp: weatherData.temp, trends: seasonalTrends });
                     });
 
+                    // 3. GAS 데이터 로드
                     try {
-                        let fetchPromise;
-                        if (GAS_API_URL.includes("YOUR_SCRIPT_ID")) {
-                            fetchPromise = new Promise(resolve => setTimeout(() => resolve({
-                                status: 'success',
-                                todaysPicks: ["비밀의 숲 정주행", "겨울 감성 영화", "크리스마스 로코", "주말 힐링 예능"],
-                                sheetName: "2025_02_편성데이터", 
-                                data: [
-                                    { id: "CS11197562", title: "통잠", category: "영화", subCategory: "한국영화", price: 10000 },
-                                    { id: "CS001", title: "겨울왕국", category: "영화", subCategory: "애니메이션", price: 5500 },
-                                    { id: "CS002", title: "어바웃 타임", category: "영화", subCategory: "로맨스", price: 1500 },
-                                    { id: "CS003", title: "러브 액츄얼리", category: "영화", subCategory: "로맨스", price: 1200 },
-                                    { id: "CS004", title: "나 홀로 집에", category: "영화", subCategory: "가족", price: 1000 },
-                                    { id: "CS005", title: "비밀의 숲", category: "드라마", subCategory: "한국드라마", price: 0 }
-                                ]
-                            }), 500));
-                        } else {
-                            fetchPromise = fetch(GAS_API_URL).then(r => r.json());
-                        }
+                        const response = await fetch(GAS_API_URL);
+                        const json = await response.json();
 
-                        const json = await fetchPromise;
                         if (json.status === 'success') {
                             setDbData(json.data || []);
                             setTodaysPicks(json.todaysPicks || []);
                             setSheetName(json.sheetName || `${dateString}_편성데이터`);
+                            
+                            // 캐시 업데이트
                             localStorage.setItem(CACHE_KEY, JSON.stringify({
-                                data: json.data, todaysPicks: json.todaysPicks, sheetName: json.sheetName, timestamp: new Date().getTime()
+                                data: json.data,
+                                todaysPicks: json.todaysPicks,
+                                sheetName: json.sheetName,
+                                timestamp: new Date().getTime()
                             }));
+
                             if (!hasCache) setIsLoadingData(false);
+                            else console.log("Background data updated");
                         }
                     } catch (error) {
-                        if (!hasCache) { setSheetName("오프라인 모드"); setIsLoadingData(false); }
+                        console.error("Fetch Error:", error);
+                        if (!hasCache) {
+                            setSheetName("오프라인 모드");
+                            setTodaysPicks(["비밀의 숲", "겨울왕국", "무빙", "나 홀로 집에"]);
+                            setIsLoadingData(false);
+                            showToast("서버 연결 실패. 오프라인 모드로 실행합니다.");
+                        }
                     }
                 };
                 initApp();
@@ -277,18 +297,25 @@
                 
                 try {
                     let aiResponse = { recommendedTitles: [], strategy: "", blockTitle: "" };
+                    
                     try {
-                        if (GAS_API_URL.includes("YOUR_SCRIPT_ID")) throw new Error("Mock Mode");
+                        // GAS 검색 API 호출
                         const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(targetQuery)}&weather=${encodeURIComponent(context.weather)}`);
-                        if (!response.ok) throw new Error("API Error");
                         const json = await response.json();
-                        if (json.status === 'success') aiResponse = json; else throw new Error("API Error");
+                        
+                        if (json.status === 'success') {
+                            aiResponse = json;
+                        } else {
+                            throw new Error("API Logic Error");
+                        }
                     } catch (e) {
-                        await new Promise(r => setTimeout(r, 1000));
+                        // Fallback (오프라인/에러 시)
+                        console.warn("Search API Failed, using local search", e);
+                        await new Promise(r => setTimeout(r, 800)); // 약간의 지연 효과
                         aiResponse = {
-                            recommendedTitles: [{ title: targetQuery, reason: "검색 결과", type: "기타", keywords: ["#검색"] }],
-                            strategy: `오프라인/Mock 모드 검색`,
-                            blockTitle: `"${targetQuery}" 관련`
+                            recommendedTitles: [{ title: targetQuery, reason: "키워드 검색", type: "검색", keywords: ["#검색"] }],
+                            strategy: `오프라인 키워드 매칭`,
+                            blockTitle: `"${targetQuery}" 검색 결과`
                         };
                     }
 
@@ -336,7 +363,7 @@
                     setViewState("result");
                 } catch (e) {
                     console.error(e);
-                    showToast("검색 중 오류가 발생했습니다.");
+                    showToast("오류가 발생했습니다.");
                     setViewState("idle");
                 } finally {
                     setIsSearching(false);
@@ -356,11 +383,19 @@
             };
 
             const downloadExcel = () => {
-                const csvRows = results.map(r => `${r.id},${r.title},"${r.prices.join('/')}"`).join('\n');
-                const blob = new Blob([`\uFEFFID,Title,Price\n${csvRows}`], { type: 'text/csv;charset=utf-8;' });
+                const blockHeader = `추천 편성 블록명,${blockTitle}\n\n`;
+                const colHeader = "시리즈ID,타이틀명,가격정보,서브카테고리,AI태그\n";
+                const csvRows = results.map(r => {
+                    const cleanTitle = (r.title || "").replace(/,/g, " "); 
+                    const priceStr = r.prices.join(" / ");
+                    const tags = (r.aiKeywords || []).join(" ");
+                    return `${r.id},${cleanTitle},"${priceStr}",${r.subCategory},${tags}`;
+                }).join('\n');
+                
+                const blob = new Blob([`\uFEFF${blockHeader}${colHeader}${csvRows}`], { type: 'text/csv;charset=utf-8;' });
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
-                link.download = `list.csv`;
+                link.download = `list_${dateString}.csv`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -368,7 +403,14 @@
 
             const copyToClipboard = () => {
                 const txt = results.map(r => `${r.id}\t${r.title}`).join('\n');
-                navigator.clipboard.writeText(txt).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+                const textArea = document.createElement("textarea");
+                textArea.value = txt;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
             };
 
             const toggleGenre = (genre) => {
@@ -378,11 +420,17 @@
             if (isLoadingData) {
                 return (
                     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
-                        <div className="bg-white p-8 rounded-3xl shadow-xl flex flex-col items-center max-w-sm w-full border border-slate-100">
+                        <div className="bg-white p-8 rounded-3xl shadow-xl flex flex-col items-center max-w-sm w-full border border-slate-100 relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse"></div>
                             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6 animate-bounce">
                                 <Sparkles size={32} className="text-blue-600" />
                             </div>
-                            <h2 className="text-xl font-bold text-slate-800 mb-4">{LOADING_MESSAGES[loadingMsgIndex]}</h2>
+                            <h2 className="text-xl font-bold text-slate-800 mb-4 min-h-[3rem] flex items-center justify-center">
+                                {LOADING_MESSAGES[loadingMsgIndex]}
+                            </h2>
+                            <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
+                                <Server size={12} /><span>Oasis 서버 연결 중...</span>
+                            </div>
                         </div>
                     </div>
                 );
@@ -391,7 +439,7 @@
             return (
                 <div className="min-h-screen bg-gray-50 text-gray-800 font-sans max-w-5xl mx-auto shadow-2xl overflow-hidden relative border-x border-gray-100">
                     {toastMessage && (
-                        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-xl z-50 text-sm font-bold flex items-center gap-2">
+                        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-xl z-50 text-sm font-bold flex items-center gap-2 animate-fade-in whitespace-nowrap">
                             <CheckCircle2 size={18} className="text-green-400" /> {toastMessage}
                         </div>
                     )}
@@ -399,12 +447,15 @@
                     <header className="bg-white px-5 pt-6 pb-4 sticky top-0 z-20 border-b border-gray-100">
                         <div className="flex justify-between items-center mb-4">
                             <div className="flex items-center gap-2 cursor-pointer" onClick={resetApp}>
-                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white"><Sparkles size={18} /></div>
-                                <h1 className="font-bold text-xl">AI Curator</h1>
+                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white shadow-md shadow-blue-200"><Sparkles size={18} fill="currentColor" /></div>
+                                <h1 className="font-bold text-xl tracking-tight">AI Curator</h1>
                             </div>
-                            <div className="flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
-                                <FileSpreadsheet size={12} className="text-green-600"/>
-                                <span className="text-[11px] font-bold text-green-800">Data Connected</span>
+                            <div className="flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100 shadow-sm">
+                                <div className={`w-2 h-2 rounded-full ${sheetName.includes('오프라인') ? 'bg-red-500' : 'bg-green-500'}`}></div>
+                                <span className="text-[11px] font-bold text-green-800 flex items-center gap-1">
+                                    <FileSpreadsheet size={12} className="text-green-600"/>
+                                    {sheetName}
+                                </span>
                             </div>
                         </div>
                         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -412,7 +463,7 @@
                                 {getWeatherIcon(context.weather)} {context.temp} {context.weather}
                             </div>
                             {context.trends.map((tag, i) => (
-                                <button key={i} onClick={() => handleSearch(tag.replace("#", ""))} className="px-3 py-1.5 bg-white text-gray-600 rounded-full text-xs font-medium border border-gray-200 hover:bg-gray-50 flex items-center gap-1">
+                                <button key={i} onClick={() => handleSearch(tag.replace("#", ""))} className="px-3 py-1.5 bg-white text-gray-600 rounded-full text-xs font-medium border border-gray-200 shadow-sm active:scale-95 transition-transform hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
                                     <Hash size={10} className="text-gray-400"/>{tag.replace("#", "")}
                                 </button>
                             ))}
@@ -421,24 +472,47 @@
 
                     <main className="p-5 pb-32 min-h-[80vh]">
                         {viewState === "idle" && (
-                            <div className="flex flex-col gap-6 mt-4 max-w-3xl mx-auto">
+                            <div className="flex flex-col gap-6 mt-4 max-w-3xl mx-auto animate-fade-in">
                                 <SearchBar query={query} setQuery={setQuery} handleSearch={handleSearch} setShowFilters={setShowFilters} hasFilters={hasActiveFilters} />
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    {todaysPicks.map((q, i) => (
-                                        <button key={i} onClick={() => handleSearch(q)} className={`p-4 rounded-xl text-left text-sm font-bold shadow-sm border ${getRandomColorClass(i)}`}>
-                                            <div className="text-lg mb-1">{getRandomEmoji(i)}</div>{q}
-                                        </button>
-                                    ))}
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center px-1">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">AI Recommendation</p>
+                                        <span className="text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">Weather Based</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        {todaysPicks.length > 0 ? todaysPicks.map((q, i) => (
+                                            <button key={i} onClick={() => handleSearch(q)} className={`p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all h-full border ${getRandomColorClass(i)}`}>
+                                                <div className="text-lg mb-1">{getRandomEmoji(i)}</div>{q}
+                                            </button>
+                                        )) : [1,2,3,4].map(n => <div key={n} className="h-24 bg-gray-100 rounded-xl animate-pulse"></div>)}
+                                    </div>
                                 </div>
+                                {hasActiveFilters && (
+                                    <div className="bg-blue-50 p-3 rounded-lg flex items-start gap-2 text-xs text-blue-700 border border-blue-100">
+                                        <Filter size={14} className="mt-0.5" />
+                                        <div>
+                                            <span className="font-bold">적용된 필터:</span>
+                                            {selectedGenres.length > 0 && ` 장르(${selectedGenres.length})`}
+                                            {priceType !== 'all' && ` 가격(${priceType})`}
+                                            {includeRestricted && ` 성인포함`}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
 
                         {viewState === "thinking" && (
                             <div className="flex flex-col items-center justify-center h-64 mt-10 space-y-6 animate-pulse">
-                                <div className="w-20 h-20 bg-white rounded-2xl shadow-lg border border-blue-100 flex items-center justify-center">
-                                    <Sparkles size={32} className="text-blue-600 animate-spin-slow" />
+                                <div className="relative">
+                                    <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 rounded-full animate-ping"></div>
+                                    <div className="w-20 h-20 bg-white rounded-2xl shadow-lg border border-blue-100 flex items-center justify-center relative z-10">
+                                        <Sparkles size={32} className="text-blue-600 animate-spin-slow" />
+                                    </div>
                                 </div>
-                                <div className="text-center"><h3 className="font-bold text-gray-800">AI 큐레이션 진행 중...</h3></div>
+                                <div className="text-center space-y-1">
+                                    <h3 className="text-lg font-bold text-gray-800">AI 큐레이션 진행 중...</h3>
+                                    <p className="text-sm text-gray-500">유사도 분석 및 중복 데이터<br/>병합 작업을 수행하고 있습니다.</p>
+                                </div>
                             </div>
                         )}
 
@@ -448,69 +522,98 @@
                                 <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
                                     <Edit3 className="absolute top-5 right-5 text-white opacity-50" size={20} />
                                     <div className="relative z-10">
-                                        <div className="flex items-center gap-2 mb-3 text-purple-200 text-xs font-bold uppercase"><Sparkles size={12} /> AI Recommended</div>
-                                        <h3 className="text-2xl font-bold">{blockTitle}</h3>
-                                        <div className="mt-2 text-xs text-purple-200">{strategy}</div>
+                                        <div className="flex items-center gap-2 mb-3 text-purple-200 text-xs font-bold uppercase tracking-wider"><Sparkles size={12} /> AI Recommended Title</div>
+                                        <h3 className="text-2xl font-bold leading-snug pr-8 tracking-tight">{blockTitle}</h3>
+                                        <div className="mt-3 flex items-center gap-2">
+                                            <span className="bg-white/20 px-2 py-1 rounded text-[10px] backdrop-blur-sm">{strategy}</span>
+                                        </div>
                                     </div>
                                 </div>
+
+                                <div className="flex items-center justify-between px-1 pt-2">
+                                    <h4 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
+                                        <CheckCircle2 size={20} className="text-green-500" /> 추천 결과 ({results.length}건)
+                                    </h4>
+                                </div>
+
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {results.length > 0 ? results.map((item, idx) => (
-                                        <div key={idx} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm">
-                                            <div className="flex justify-between items-start gap-3">
-                                                <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono font-bold">{item.id}</span>
-                                                <h5 className="font-bold text-gray-900 text-lg flex-1 text-right">{item.title}</h5>
+                                        <div key={idx} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow group">
+                                            <div>
+                                                <div className="flex justify-between items-start gap-3">
+                                                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono font-bold shrink-0 border border-slate-200 h-fit mt-0.5">{item.id}</span>
+                                                    <h5 className="font-bold text-gray-900 text-lg leading-tight break-keep flex-1 text-right">{item.title}</h5>
+                                                </div>
+                                                <div className="flex justify-end flex-wrap gap-1 mt-3">
+                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold border flex items-center gap-1 ${getTagStyle(item.subCategory)}`}><Hash size={10} /> {item.subCategory}</span>
+                                                    {item.aiKeywords?.map((k, ki) => <span key={ki} className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded border border-blue-100 flex items-center gap-1">{k}</span>)}
+                                                </div>
                                             </div>
-                                            <div className="flex justify-end gap-1 mt-2">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>{item.subCategory}</span>
-                                                {item.aiKeywords?.map((k, ki) => <span key={ki} className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] rounded border border-blue-100">{k}</span>)}
-                                            </div>
-                                            <div className="mt-3 text-right text-xs font-bold text-slate-600">
-                                                {item.prices.map(p => p === 0 ? "무료" : p.toLocaleString() + "원").join(" / ")}
+                                            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-50">
+                                                <span className="text-xs text-gray-400 font-bold">
+                                                    {item.prices.map(p => p === 0 ? "무료" : p.toLocaleString() + "원").join(" / ")}
+                                                </span>
                                             </div>
                                         </div>
-                                    )) : <div className="col-span-full text-center py-10 text-gray-400">결과가 없습니다.</div>}
+                                    )) : (
+                                        <div className="col-span-full text-center py-16 text-gray-400">
+                                            <div className="inline-block p-4 bg-gray-50 rounded-full mb-3"><AlertTriangle size={24} className="text-gray-300" /></div>
+                                            <p className="font-bold text-gray-600">추천 결과가 없습니다.</p>
+                                        </div>
+                                    )}
                                 </div>
+                                <div className="h-20"></div>
                             </div>
                         )}
                     </main>
                     
                     {viewState === "result" && (
-                        <div className="absolute bottom-6 left-0 right-0 z-30 flex justify-center pointer-events-none">
-                             <div className="flex gap-3 pointer-events-auto bg-white/90 p-2 rounded-2xl shadow-2xl border border-white/50 backdrop-blur-sm">
-                                <button onClick={resetApp} className="w-12 h-12 flex items-center justify-center bg-white border rounded-xl hover:bg-gray-50"><RotateCcw size={20}/></button>
-                                <button onClick={downloadExcel} className="w-12 h-12 flex items-center justify-center bg-white border rounded-xl text-green-600 hover:bg-green-50"><Download size={20}/></button>
-                                <button onClick={copyToClipboard} className={`h-12 px-6 rounded-xl text-white font-bold flex items-center gap-2 ${copied ? 'bg-indigo-600' : 'bg-blue-600'}`}>
-                                    {copied ? <CheckCircle2 size={20}/> : <Copy size={20}/>} {copied ? "완료" : "ID 복사"}
+                        <div className="absolute bottom-6 left-5 right-5 z-30 flex justify-center pointer-events-none">
+                             <div className="flex gap-3 w-full max-w-2xl pointer-events-auto bg-white/80 backdrop-blur-sm p-2 rounded-2xl border border-white/50 shadow-2xl animate-slide-up">
+                                <button onClick={resetApp} className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition-all"><RotateCcw size={22}/></button>
+                                <button onClick={downloadExcel} className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-green-600 hover:bg-green-50 active:scale-95 transition-all"><Download size={22}/></button>
+                                <button onClick={copyToClipboard} className={`flex-1 h-14 rounded-xl shadow-sm font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 ${copied ? 'bg-indigo-600 text-white' : 'bg-blue-600 text-white hover:bg-blue-700'}`}>
+                                    {copied ? <><CheckCircle2 size={22} /> 완료!</> : <><Copy size={22} /> 리스트 복사</>}
                                 </button>
                              </div>
                         </div>
                     )}
                     
                     {showFilters && (
-                        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={(e) => e.target === e.currentTarget && setShowFilters(false)}>
-                            <div className="bg-white w-[90%] max-w-sm rounded-3xl p-6 space-y-6">
-                                <div className="flex justify-between items-center"><h3 className="font-bold text-xl">필터</h3><button onClick={() => setShowFilters(false)}><X/></button></div>
-                                <div>
-                                    <div className="text-sm font-bold text-gray-500 mb-2">장르</div>
-                                    <div className="flex flex-wrap gap-2">
-                                        {allGenres.map(g => (
-                                            <button key={g} onClick={() => toggleGenre(g)} className={`px-3 py-1.5 rounded-full text-sm border ${selectedGenres.includes(g) ? 'bg-blue-600 text-white' : 'bg-white'}`}>{g}</button>
-                                        ))}
+                        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center sm:justify-center animate-fade-in" onClick={(e) => e.target === e.currentTarget && setShowFilters(false)}>
+                            <div className="bg-white w-full sm:w-[400px] sm:rounded-3xl rounded-t-3xl p-6 pb-10 space-y-6 animate-slide-up shadow-2xl">
+                                <div className="flex justify-between items-center"><h3 className="text-xl font-bold">검색 필터</h3><button onClick={() => setShowFilters(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200"><X size={20}/></button></div>
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
+                                        <span className="text-sm font-bold text-red-600">성인/기타 포함</span>
+                                        <button onClick={() => setIncludeRestricted(!includeRestricted)} className={`w-12 h-7 rounded-full transition-colors relative ${includeRestricted ? 'bg-red-500' : 'bg-gray-300'}`}>
+                                            <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${includeRestricted ? 'translate-x-5' : ''}`}></div>
+                                        </button>
                                     </div>
-                                </div>
-                                <div>
-                                    <div className="text-sm font-bold text-gray-500 mb-2">가격</div>
-                                    <div className="flex gap-2">
-                                        {[{l:'전체',v:'all'},{l:'무료',v:'free'},{l:'유료',v:'paid'}].map(o => (
-                                            <button key={o.v} onClick={() => setPriceType(o.v)} className={`flex-1 py-2 rounded-lg border text-sm font-bold ${priceType === o.v ? 'bg-blue-600 text-white' : 'bg-white'}`}>{o.l}</button>
-                                        ))}
+                                    <div>
+                                        <label className="text-sm font-bold text-gray-500 mb-2 block">장르</label>
+                                        <div className="flex flex-wrap gap-2">
+                                            {allGenres.map(g => (
+                                                <button key={g} onClick={() => toggleGenre(g)} className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${selectedGenres.includes(g) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>{g}</button>
+                                            ))}
+                                        </div>
                                     </div>
+                                    <div>
+                                        <label className="text-sm font-bold text-gray-500 mb-2 block">가격</label>
+                                        <div className="flex gap-2">
+                                            {[{l:'전체',v:'all'},{l:'무료',v:'free'},{l:'유료',v:'paid'}].map(o => (
+                                                <button key={o.v} onClick={() => setPriceType(o.v)} className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${priceType === o.v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}>{o.l}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {priceType === 'paid' && (
+                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                                            <div className="flex justify-between items-center mb-2"><span className="text-xs font-bold text-gray-500">최소 가격</span><span className="text-sm font-bold text-blue-600">{minPrice.toLocaleString()}원 이상</span></div>
+                                            <input type="range" min="0" max="20000" step="500" value={minPrice} onChange={(e) => setMinPrice(Number(e.target.value))} className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"/>
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-bold text-red-500">성인/기타 포함</span>
-                                    <input type="checkbox" checked={includeRestricted} onChange={() => setIncludeRestricted(!includeRestricted)} className="toggle" />
-                                </div>
-                                <button onClick={handleApplyFilter} className="w-full py-3 bg-slate-900 text-white rounded-xl font-bold">적용하기</button>
+                                <button onClick={handleApplyFilter} className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-colors">적용하기</button>
                             </div>
                         </div>
                     )}
