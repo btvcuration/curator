@@ -32,6 +32,11 @@
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
         .animate-ping { animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; }
+        
+        /* Drag and Drop Styles */
+        .draggable-item { cursor: grab; }
+        .draggable-item:active { cursor: grabbing; }
+        .drag-over { border: 2px dashed #3b82f6; background-color: #eff6ff; }
     </style>
 </head>
 <body class="bg-slate-50">
@@ -87,9 +92,11 @@
         const DollarSign = (p) => <Icon name="DollarSign" {...p} />;
         const AlertTriangle = (p) => <Icon name="AlertTriangle" {...p} />;
         const Trash2 = (p) => <Icon name="Trash2" {...p} />;
-        const ArrowUp = (p) => <Icon name="ArrowUp" {...p} />;
-        const ArrowDown = (p) => <Icon name="ArrowDown" {...p} />;
+        const GripVertical = (p) => <Icon name="GripVertical" {...p} />;
         const Database = (p) => <Icon name="Database" {...p} />;
+        const CalendarClock = (p) => <Icon name="CalendarClock" {...p} />;
+        const CheckSquare = (p) => <Icon name="CheckSquare" {...p} />;
+        const Square = (p) => <Icon name="Square" {...p} />;
 
         // --- CONFIGURATION ---
         const GAS_API_URL = "https://jolly-sun-635f.alcheminos.workers.dev/"; 
@@ -166,30 +173,53 @@
 
         const getSeasonalKeywords = () => {
             const month = new Date().getMonth() + 1;
-            // 월별 명확한 테마 지정 (여름 키워드가 겨울에 뜨지 않도록)
             if (month >= 12 || month <= 2) {
                 return {
                     season: "겨울",
                     keywords: ["#따뜻한전기장판", "#크리스마스", "#연말정주행", "#겨울방학", "#귤까먹으며"],
-                    desc: "이불 밖은 위험해! 겨울 필수 시청작"
+                    desc: "이불 밖은 위험해! 겨울 필수 시청작",
+                    sentences: [
+                        "귤 까먹으며 보기 좋은 겨울 정주행 시리즈 🍊",
+                        "연말 분위기 물씬 나는 크리스마스 특선 🎄",
+                        "추운 날 마음까지 따뜻해지는 힐링 무비 ☕",
+                        "긴 겨울밤을 책임질 몰입감 100% 스릴러 🌙"
+                    ]
                 };
             } else if (month >= 3 && month <= 5) {
                 return {
                     season: "봄",
                     keywords: ["#봄나들이", "#벚꽃엔딩", "#로맨스", "#새학기", "#설렘주의"],
-                    desc: "살랑살랑 봄바람 타고 온 로맨스"
+                    desc: "살랑살랑 봄바람 타고 온 로맨스",
+                    sentences: [
+                        "봄바람 휘날리며 보고 싶은 설렘 로맨스 🌸",
+                        "새로운 시작, 활기찬 에너지를 주는 성장 드라마 🌱",
+                        "나른한 오후를 깨워줄 유쾌한 예능 한 조각 ☀️",
+                        "벚꽃 피는 계절, 다시 꺼내보는 첫사랑 명작 💕"
+                    ]
                 };
             } else if (month >= 6 && month <= 8) {
                 return {
                     season: "여름",
                     keywords: ["#공포특집", "#호러", "#여름휴가", "#바캉스", "#시원한액션"],
-                    desc: "무더위를 날려버릴 시원한 콘텐츠"
+                    desc: "무더위를 날려버릴 시원한 콘텐츠",
+                    sentences: [
+                        "무더위 타파! 등골이 오싹해지는 공포 특집 👻",
+                        "집에서 떠나는 시원한 방구석 바캉스 🌊",
+                        "답답한 속이 뻥 뚫리는 사이다 액션 영화 🥤",
+                        "열대야 잠 못 드는 밤, 시간 순삭 정주행 🌙"
+                    ]
                 };
             } else {
                 return {
                     season: "가을",
                     keywords: ["#감성충만", "#독서의계절", "#멜로", "#단풍놀이", "#추석특선"],
-                    desc: "센치한 가을 밤, 감성 충전 타임"
+                    desc: "센치한 가을 밤, 감성 충전 타임",
+                    sentences: [
+                        "쌀쌀한 가을밤, 감성을 채워줄 멜로 영화 🍂",
+                        "깊어가는 가을, 생각에 잠기게 하는 명작들 📚",
+                        "풍성한 한가위, 온 가족이 함께 보는 특선작 🌕",
+                        "낙엽 떨어질 때 생각나는 추억의 드라마 🎞️"
+                    ]
                 };
             }
         };
@@ -207,7 +237,6 @@
 
         const fetchRealWeather = async () => {
             try {
-                // 타임아웃 2초 설정하여 빠른 응답 유도
                 const controller = new AbortController();
                 const timeoutId = setTimeout(() => controller.abort(), 2000);
                 
@@ -229,7 +258,6 @@
                     weather: simplifiedDesc
                 };
             } catch (e) {
-                // 실패 시 계절 기반 폴백
                 const seasonInfo = getSeasonalKeywords();
                 return { temp: "", weather: seasonInfo.season, isFallback: true };
             }
@@ -325,11 +353,21 @@
             const [blockTitle, setBlockTitle] = useState("");
             const [copied, setCopied] = useState(false);
             const [showFilters, setShowFilters] = useState(false);
+            const [showDateModal, setShowDateModal] = useState(false);
             const [toastMessage, setToastMessage] = useState(""); 
             const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
             const [isLoadingData, setIsLoadingData] = useState(true);
             const [isSearching, setIsSearching] = useState(false);
             
+            // Selection & DnD
+            const [selectedItems, setSelectedItems] = useState(new Set());
+            const dragItem = useRef(null);
+            const dragOverItem = useRef(null);
+            
+            // Bulk Edit State
+            const [bulkStartDate, setBulkStartDate] = useState("");
+            const [bulkEndDate, setBulkEndDate] = useState("");
+
             // Context State
             const [context, setContext] = useState({ weather: "", temp: "", trends: [] }); 
             const [todaysPicks, setTodaysPicks] = useState([]);
@@ -360,14 +398,12 @@
                 }
             }, [isLoadingData]);
 
-            // 초기화: 날씨 + 데이터 로드 (캐싱 적용)
             useEffect(() => {
                 const initApp = async () => {
                     setIsLoadingData(true);
                     
-                    // 1. 날씨 및 시즌 정보 설정
                     const weatherData = await fetchRealWeather();
-                    const seasonalInfo = getSeasonalKeywords(); // 현재 월 기준 강력한 시즌 키워드
+                    const seasonalInfo = getSeasonalKeywords(); 
                     
                     setContext({
                         weather: weatherData.weather,
@@ -375,11 +411,8 @@
                         trends: seasonalInfo.keywords
                     });
                     
-                    // 초기 추천 검색어 설정 (날씨가 있으면 날씨 기반, 아니면 시즌 기반)
-                    // AI 추천이 이상할 경우를 대비해 클라이언트단에서 고정된 시즌 테마를 우선시 할 수도 있음
-                    setTodaysPicks(seasonalInfo.keywords.slice(0, 4));
+                    setTodaysPicks(seasonalInfo.sentences);
 
-                    // 2. 데이터 로드 (캐싱 로직: IndexedDB 사용)
                     try {
                         const cached = await loadFromIndexedDB();
                         let loadedData = null;
@@ -395,15 +428,12 @@
                         }
 
                         if (!loadedData) {
-                            // 캐시 없거나 만료됨 -> 서버 요청
                             console.log("Fetching fresh DB data");
                             const response = await fetch(GAS_API_URL); 
-                            
                             const json = await response.json();
                             if (json.status === 'success' && json.data) {
                                 loadedData = json.data;
                                 loadedTime = new Date();
-                                // 캐시 저장 (IndexedDB)
                                 await saveToIndexedDB(loadedData);
                             } else {
                                 throw new Error("Invalid API Data");
@@ -419,7 +449,6 @@
                     } catch (error) {
                         console.error("Data Load Failed:", error);
                         showToast("데이터 로드 실패 (오프라인 모드)");
-                        // Fallback Mock Data
                         setDbData([
                             { id: "CS_MOCK_01", title: "캐시 로드 실패 예시1", category: "영화", price: 0 },
                             { id: "CS_MOCK_02", title: "캐시 로드 실패 예시2", category: "드라마", price: 1000 }
@@ -449,7 +478,24 @@
                 setTimeout(() => setToastMessage(""), 3000);
             };
 
-            // 검색 핸들러
+            // 기본 날짜 생성 함수
+            const getDefaultDates = () => {
+                const now = new Date();
+                const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0); // 오늘 00:00
+                const end = new Date("9999-12-31T23:59:59");
+                
+                // datetime-local input value format: YYYY-MM-DDTHH:mm
+                const formatForInput = (d) => {
+                    const pad = (n) => String(n).padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                };
+
+                return {
+                    start: formatForInput(start),
+                    end: formatForInput(end)
+                };
+            };
+
             const handleSearch = async (inputQuery) => {
                 const targetQuery = inputQuery || query;
                 if (!targetQuery) return;
@@ -458,21 +504,17 @@
                 setViewState("thinking");
                 setIsSearching(true);
                 setResults([]);
+                setSelectedItems(new Set());
 
                 const currentYear = new Date().getFullYear();
                 const augmentedQuery = `${targetQuery} (${currentYear}년 ${context.weather} 날씨)`;
+                const { start: defaultStart, end: defaultEnd } = getDefaultDates();
 
                 try {
-                    // AI 추천 텍스트/전략 가져오기 (이 부분은 가벼우므로 매번 호출해도 됨. 단, 데이터 매칭은 로컬 dbData 사용)
-                    // 만약 이것도 캐싱하고 싶다면 sessionStorage 등 활용 가능. 여기서는 생략.
                     let aiResponse = { recommendedTitles: [], strategy: "", blockTitle: "" };
 
                     try {
-                        // GAS API에 '검색 의도'만 파악해달라고 요청 (전체 데이터 반환 X)
                         const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}&mode=planning`);
-                        // mode=planning 파라미터는 가상의 구분자. 실제 GAS가 이를 처리 못하면 전체 데이터를 줄 수도 있음.
-                        // 하지만 여기서는 클라이언트 로직이 중요.
-                        
                         if (response.ok) {
                             const json = await response.json();
                             aiResponse = json;
@@ -481,12 +523,10 @@
                         console.warn("AI Planning API Failed, using local heuristic");
                     }
 
-                    // Fallback or Apply AI Response
                     const seasonalInfo = getSeasonalKeywords();
                     setStrategy(aiResponse.strategy || `☁️ ${context.weather} 날씨와 ${seasonalInfo.season} 시즌 감성을 담은 큐레이션`);
                     setBlockTitle(aiResponse.blockTitle || `[${seasonalInfo.season}] ${targetQuery} 추천 리스트`);
 
-                    // 검색 로직 (로컬 dbData 활용)
                     const rawRecs = aiResponse.recommendedTitles || [];
                     const normalizedRecs = rawRecs.map(r => ({
                         rawTitle: typeof r === 'string' ? r : r.title,
@@ -496,13 +536,11 @@
                         keywords: r.keywords || []
                     }));
 
-                    // 스코어링 및 매칭
                     const candidates = dbData.map(item => {
                         const myTitle = (item.title || "").replace(/\s/g, '').toLowerCase();
                         let score = 0;
                         let aiReason = "";
                         
-                        // 1. AI 추천작과 유사도 비교
                         let maxSim = 0;
                         for (const rec of normalizedRecs) {
                             const sim = calculateSimilarity(myTitle, rec.cleanTitle);
@@ -512,33 +550,37 @@
                             }
                         }
                         
-                        // 2. 키워드 단순 포함 여부
                         if (myTitle.includes(targetQuery.replace(/\s/g, ''))) {
-                            score += 50; // 검색어 직접 포함 시 가산점
+                            score += 50; 
                         }
 
                         if (maxSim > 0.6) {
                             score += maxSim * 100;
                         }
 
-                        return { ...item, score, aiReason, prices: [item.price], minPrice: item.price };
+                        // 날짜 기본값 주입
+                        return { 
+                            ...item, 
+                            score, 
+                            aiReason, 
+                            prices: [item.price], 
+                            minPrice: item.price,
+                            startDate: defaultStart,
+                            endDate: defaultEnd
+                        };
                     })
-                    .filter(item => item.score > 30) // 최소 점수 커트라인
+                    .filter(item => item.score > 30) 
                     .sort((a, b) => b.score - a.score);
 
-                    // 중복 제거 (ID 기준)
                     const uniqueMap = new Map();
                     candidates.forEach(item => {
                         if (!uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
                     });
                     
-                    const finalCandidates = Array.from(uniqueMap.values()).slice(0, 50); // 최대 50개
+                    const finalCandidates = Array.from(uniqueMap.values()).slice(0, 50); 
 
                     setOriginalResults(finalCandidates);
-                    
-                    // 초기 필터 적용
                     applyFilters(finalCandidates);
-                    
                     setViewState("result");
 
                 } catch (e) {
@@ -550,7 +592,6 @@
                 }
             };
 
-            // 필터 적용 함수
             const applyFilters = (sourceData = originalResults) => {
                 let filtered = sourceData.filter(item => {
                     if (!includeRestricted && ['성인', '기타', 'adult', 'etc'].includes(item.category)) return false;
@@ -570,66 +611,116 @@
                 applyFilters();
             };
 
-            // --- 편집 기능 ---
+            // --- 편집 기능 (Selection, Date, DnD) ---
 
-            const moveItem = (index, direction) => {
-                const newResults = [...results];
-                if (direction === 'up' && index > 0) {
-                    [newResults[index], newResults[index - 1]] = [newResults[index - 1], newResults[index]];
-                } else if (direction === 'down' && index < newResults.length - 1) {
-                    [newResults[index], newResults[index + 1]] = [newResults[index + 1], newResults[index]];
-                }
-                setResults(newResults);
+            const toggleSelection = (id) => {
+                const newSet = new Set(selectedItems);
+                if (newSet.has(id)) newSet.delete(id);
+                else newSet.add(id);
+                setSelectedItems(newSet);
             };
 
-            const removeItem = (index) => {
-                const newResults = results.filter((_, i) => i !== index);
-                setResults(newResults);
+            const toggleAllSelection = () => {
+                if (selectedItems.size === results.length) {
+                    setSelectedItems(new Set());
+                } else {
+                    setSelectedItems(new Set(results.map(r => r.id)));
+                }
+            };
+
+            const handleDateChange = (id, field, value) => {
+                setResults(prev => prev.map(item => 
+                    item.id === id ? { ...item, [field]: value } : item
+                ));
+            };
+
+            const openBulkEditModal = () => {
+                if (selectedItems.size === 0) {
+                    showToast("선택된 항목이 없습니다.");
+                    return;
+                }
+                const { start, end } = getDefaultDates();
+                setBulkStartDate(start);
+                setBulkEndDate(end);
+                setShowDateModal(true);
+            };
+
+            const applyBulkDateEdit = () => {
+                setResults(prev => prev.map(item => {
+                    if (selectedItems.has(item.id)) {
+                        return {
+                            ...item,
+                            startDate: bulkStartDate || item.startDate,
+                            endDate: bulkEndDate || item.endDate
+                        };
+                    }
+                    return item;
+                }));
+                setShowDateModal(false);
+                showToast(`${selectedItems.size}건 날짜 수정 완료`);
+            };
+
+            const removeItem = (id) => {
+                setResults(prev => prev.filter(item => item.id !== id));
+                const newSet = new Set(selectedItems);
+                newSet.delete(id);
+                setSelectedItems(newSet);
+            };
+
+            // Drag and Drop Handlers
+            const onDragStart = (e, index) => {
+                dragItem.current = index;
+                // e.target.classList.add('opacity-50');
+            };
+
+            const onDragEnter = (e, index) => {
+                dragOverItem.current = index;
+                // e.target.classList.add('drag-over');
+            };
+
+            const onDragEnd = (e) => {
+                const _results = [...results];
+                const dragItemContent = _results[dragItem.current];
+                _results.splice(dragItem.current, 1);
+                _results.splice(dragOverItem.current, 0, dragItemContent);
+                dragItem.current = null;
+                dragOverItem.current = null;
+                setResults(_results);
+                // remove drag-over classes logic if needed
+            };
+
+            const onDragOver = (e) => {
+                e.preventDefault(); // Necessary for Drop to work
             };
 
             // --- 내보내기 기능 ---
 
             const copyToClipboard = () => {
-                // 요구사항: 시리즈 ID만 뽑아내기
                 const body = results.map(r => r.id).join('\n');
-                
                 const textArea = document.createElement("textarea");
                 textArea.value = body;
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
-                
                 setCopied(true);
                 showToast(`ID ${results.length}건 복사 완료`);
                 setTimeout(() => setCopied(false), 2000);
             };
 
             const downloadExcel = () => {
-                // 요구사항: A열 ID, B열 시작일시, C열 종료일시
-                // CSV 포맷 (BOM 포함)
-                
-                // 날짜 포맷터
-                const formatDate = (date) => {
-                    const y = date.getFullYear();
-                    const m = String(date.getMonth() + 1).padStart(2, '0');
-                    const d = String(date.getDate()).padStart(2, '0');
-                    return `${y}-${m}-${d} 00:00:00`;
+                // Format: YYYY-MM-DD HH:mm:ss
+                const formatForCSV = (isoStr) => {
+                    return isoStr.replace("T", " ") + ":00";
                 };
-                
-                const today = new Date();
-                const farFuture = new Date();
-                farFuture.setFullYear(2099, 11, 31); // 2099-12-31
-
-                const startDate = formatDate(today);
-                const endDate = formatDate(farFuture).replace("00:00:00", "23:59:59");
 
                 let csvContent = "시리즈ID,편성시작일시,편성종료일시\n";
                 
                 results.forEach(r => {
-                    // CSV Injection 방지 및 텍스트 처리
                     const safeId = String(r.id).replace(/,/g, ""); 
-                    csvContent += `${safeId},${startDate},${endDate}\n`;
+                    const start = formatForCSV(r.startDate);
+                    const end = formatForCSV(r.endDate);
+                    csvContent += `${safeId},${start},${end}\n`;
                 });
 
                 const BOM = '\uFEFF';
@@ -637,13 +728,11 @@
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.setAttribute('download', `편성업로드_${dateString}_${query}.csv`);
+                link.setAttribute('download', `편성업로드_${new Date().toISOString().slice(0,10)}_${query}.csv`);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
             };
-
-            const dateString = `${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}`;
 
             // --- Render Helpers ---
 
@@ -755,15 +844,17 @@
                                             {getSeasonalKeywords().season} 추천
                                         </span>
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        {todaysPicks.map((q, i) => (
+                                    <div className="grid grid-cols-1 gap-3">
+                                        {todaysPicks.map((sent, i) => (
                                             <button
                                                 key={i}
-                                                onClick={() => handleSearch(q.replace("#", ""))}
-                                                className={`p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all h-full border ${getRandomColorClass(i)}`}
+                                                onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())}
+                                                className={`p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all w-full border flex items-center gap-3 bg-white border-gray-100 hover:border-blue-200 group`}
                                             >
-                                                <div className="text-lg mb-1">{getRandomEmoji(i)}</div>
-                                                {q}
+                                                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-lg group-hover:bg-blue-100 transition-colors">
+                                                     {getRandomEmoji(i)}
+                                                </div>
+                                                <span className="text-gray-700 group-hover:text-blue-700 transition-colors">{sent}</span>
                                             </button>
                                         ))}
                                     </div>
@@ -822,77 +913,98 @@
                                             {blockTitle}
                                         </h3>
                                         <p className="text-xs text-purple-200 mt-3 opacity-80 flex items-center gap-1">
-                                            <Download size={10} /> 다운로드 시 '편성업로드' 양식(CSV)으로 저장됩니다.
+                                            <Download size={10} /> 다운로드 시 설정된 편성 일시가 반영됩니다.
                                         </p>
                                     </div>
                                 </div>
 
-                                <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex gap-4 items-center">
-                                    <div className="bg-slate-200 p-2.5 rounded-lg text-slate-500">
-                                        <Zap size={18} />
+                                {/* Controls Row */}
+                                <div className="flex items-center justify-between px-1">
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={toggleAllSelection} className="flex items-center gap-1 text-xs font-bold text-gray-500 bg-white border border-gray-200 px-2 py-1.5 rounded hover:bg-gray-50">
+                                            {selectedItems.size === results.length && results.length > 0 ? <CheckSquare size={14} className="text-blue-500"/> : <Square size={14}/>}
+                                            전체 선택
+                                        </button>
+                                        <button onClick={openBulkEditModal} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1.5 rounded hover:bg-blue-100 disabled:opacity-50" disabled={selectedItems.size === 0}>
+                                            <CalendarClock size={14}/>
+                                            일괄 일시 수정
+                                        </button>
                                     </div>
-                                    <div>
-                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Strategy</div>
-                                        <div className="text-sm text-slate-700 font-medium">{strategy}</div>
-                                    </div>
-                                </div>
-
-                                <div className="flex items-center justify-between px-1 pt-2">
-                                    <h4 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
-                                        <CheckCircle2 size={20} className="text-green-500" />
-                                        편성 리스트 ({results.length}건)
-                                    </h4>
-                                    <span className="text-[10px] text-gray-400">순서 변경 및 삭제 가능</span>
+                                    <span className="text-[10px] text-gray-400">드래그하여 순서 변경</span>
                                 </div>
 
                                 <div className="space-y-3">
                                     {results.length > 0 ? results.map((item, idx) => (
-                                        <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4 group hover:border-blue-200 transition-colors">
-                                            {/* 순서 변경 컨트롤 */}
-                                            <div className="flex flex-col gap-1 text-gray-300">
-                                                <button 
-                                                    onClick={() => moveItem(idx, 'up')} 
-                                                    disabled={idx === 0}
-                                                    className="hover:text-blue-500 disabled:opacity-20"
-                                                >
-                                                    <ArrowUp size={16} />
-                                                </button>
-                                                <button 
-                                                    onClick={() => moveItem(idx, 'down')} 
-                                                    disabled={idx === results.length - 1}
-                                                    className="hover:text-blue-500 disabled:opacity-20"
-                                                >
-                                                    <ArrowDown size={16} />
-                                                </button>
-                                            </div>
-
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex justify-between items-start mb-1">
-                                                    <h5 className="font-bold text-gray-900 text-base truncate pr-2">
-                                                        {item.title}
-                                                    </h5>
-                                                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono shrink-0">
-                                                        {item.id}
-                                                    </span>
+                                        <div 
+                                            key={item.id} 
+                                            className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col gap-3 group transition-colors draggable-item ${selectedItems.has(item.id) ? 'border-blue-400 ring-1 ring-blue-400 bg-blue-50/10' : 'border-gray-100 hover:border-blue-200'}`}
+                                            draggable
+                                            onDragStart={(e) => onDragStart(e, idx)}
+                                            onDragEnter={(e) => onDragEnter(e, idx)}
+                                            onDragEnd={onDragEnd}
+                                            onDragOver={onDragOver}
+                                        >
+                                            <div className="flex items-start gap-3">
+                                                {/* Drag Handle & Checkbox */}
+                                                <div className="flex flex-col items-center gap-2 pt-1">
+                                                    <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing">
+                                                        <GripVertical size={18} />
+                                                    </div>
+                                                    <button onClick={() => toggleSelection(item.id)} className="text-gray-400 hover:text-blue-500">
+                                                        {selectedItems.has(item.id) ? <CheckSquare size={18} className="text-blue-500"/> : <Square size={18}/>}
+                                                    </button>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-xs text-gray-500">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
-                                                        {item.subCategory}
-                                                    </span>
-                                                    {item.aiReason && (
-                                                        <span className="truncate text-blue-500 max-w-[200px]">
-                                                            💡 {item.aiReason}
+
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <h5 className="font-bold text-gray-900 text-base truncate pr-2">
+                                                            {item.title}
+                                                        </h5>
+                                                        <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono shrink-0">
+                                                            {item.id}
                                                         </span>
-                                                    )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
+                                                            {item.subCategory}
+                                                        </span>
+                                                        {item.aiReason && (
+                                                            <span className="truncate text-blue-500 max-w-[200px]">
+                                                                💡 {item.aiReason}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Date Inputs */}
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs bg-gray-50 p-2 rounded-lg">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-gray-400 font-bold">시작</span>
+                                                            <input 
+                                                                type="datetime-local" 
+                                                                value={item.startDate}
+                                                                onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
+                                                                className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-36 text-gray-600 font-mono"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-gray-400 font-bold">종료</span>
+                                                            <input 
+                                                                type="datetime-local" 
+                                                                value={item.endDate}
+                                                                onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
+                                                                className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-36 text-gray-600 font-mono"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
 
-                                            <button 
-                                                onClick={() => removeItem(idx)}
-                                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                            >
-                                                <Trash2 size={18} />
-                                            </button>
+                                                <button 
+                                                    onClick={() => removeItem(item.id)}
+                                                    className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors self-start"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </div>
                                     )) : (
                                         <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
@@ -942,6 +1054,39 @@
                                         </>
                                     )}
                                 </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Bulk Edit Modal */}
+                    {showDateModal && (
+                        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center animate-fade-in p-4" onClick={(e) => e.target === e.currentTarget && setShowDateModal(false)}>
+                            <div className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 animate-slide-up shadow-2xl">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-lg font-bold">일괄 일시 수정 ({selectedItems.size}건)</h3>
+                                    <button onClick={() => setShowDateModal(false)}><X size={20} className="text-gray-400"/></button>
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 block mb-1">시작 일시</label>
+                                        <input 
+                                            type="datetime-local" 
+                                            value={bulkStartDate}
+                                            onChange={(e) => setBulkStartDate(e.target.value)}
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-gray-500 block mb-1">종료 일시</label>
+                                        <input 
+                                            type="datetime-local" 
+                                            value={bulkEndDate}
+                                            onChange={(e) => setBulkEndDate(e.target.value)}
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                    </div>
+                                </div>
+                                <button onClick={applyBulkDateEdit} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">적용하기</button>
                             </div>
                         </div>
                     )}
