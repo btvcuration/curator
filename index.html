@@ -1140,6 +1140,30 @@
                                                 </button>
                                             ))}
                                         </div>
+                                        
+                                        {/* Price Range Slider (Restored) */}
+                                        {priceType === 'paid' && (
+                                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 animate-fade-in mt-3">
+                                                <div className="flex justify-between items-center mb-2">
+                                                    <span className="text-xs font-bold text-gray-500">최소 가격 설정</span>
+                                                    <span className="text-sm font-bold text-blue-600">{minPrice.toLocaleString()}원 이상</span>
+                                                </div>
+                                                <input 
+                                                    type="range" 
+                                                    min="0" 
+                                                    max="20000" 
+                                                    step="500" 
+                                                    value={minPrice} 
+                                                    onChange={(e) => setMinPrice(Number(e.target.value))}
+                                                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                />
+                                                <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-1">
+                                                    <span>0원</span>
+                                                    <span>10,000원</span>
+                                                    <span>20,000원+</span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 <button 
