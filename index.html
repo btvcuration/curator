@@ -40,12 +40,10 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- Lucide Icon Helper Component ---
-        // React 환경에서 Lucide CDN의 아이콘 데이터를 SVG로 변환하여 렌더링합니다.
+        // --- Lucide Icon Helper ---
         const Icon = ({ name, size = 24, className, color = "currentColor", ...props }) => {
             const iconData = lucide.icons[name];
             if (!iconData) return null;
-
             return (
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -68,7 +66,6 @@
             );
         };
 
-        // 개별 아이콘 컴포넌트 정의 (기존 코드와의 호환성 유지)
         const Sparkles = (p) => <Icon name="Sparkles" {...p} />;
         const Search = (p) => <Icon name="Search" {...p} />;
         const CloudSnow = (p) => <Icon name="CloudSnow" {...p} />;
@@ -80,33 +77,126 @@
         const ArrowRight = (p) => <Icon name="ArrowRight" {...p} />;
         const Copy = (p) => <Icon name="Copy" {...p} />;
         const RotateCcw = (p) => <Icon name="RotateCcw" {...p} />;
-        const Film = (p) => <Icon name="Film" {...p} />;
         const Filter = (p) => <Icon name="Filter" {...p} />;
         const X = (p) => <Icon name="X" {...p} />;
-        const RefreshCw = (p) => <Icon name="RefreshCw" {...p} />;
-        const Calendar = (p) => <Icon name="Calendar" {...p} />;
         const Download = (p) => <Icon name="Download" {...p} />;
         const Edit3 = (p) => <Icon name="Edit3" {...p} />;
         const Server = (p) => <Icon name="Server" {...p} />;
         const FileSpreadsheet = (p) => <Icon name="FileSpreadsheet" {...p} />;
-        const Loader2 = (p) => <Icon name="Loader2" {...p} />;
         const Hash = (p) => <Icon name="Hash" {...p} />;
         const DollarSign = (p) => <Icon name="DollarSign" {...p} />;
         const AlertTriangle = (p) => <Icon name="AlertTriangle" {...p} />;
-        const Thermometer = (p) => <Icon name="Thermometer" {...p} />;
-        const Tag = (p) => <Icon name="Tag" {...p} />;
-        const Quote = (p) => <Icon name="Quote" {...p} />;
-
+        const Trash2 = (p) => <Icon name="Trash2" {...p} />;
+        const ArrowUp = (p) => <Icon name="ArrowUp" {...p} />;
+        const ArrowDown = (p) => <Icon name="ArrowDown" {...p} />;
+        const Database = (p) => <Icon name="Database" {...p} />;
 
         // --- CONFIGURATION ---
         const GAS_API_URL = "https://jolly-sun-635f.alcheminos.workers.dev/"; 
+        const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24시간 캐시
+
+        // --- IndexedDB Helper Functions ---
+        const DB_NAME = "AI_Curator_DB";
+        const STORE_NAME = "titles";
+        const DB_VERSION = 1;
+
+        const initDB = () => {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = () => reject("IndexedDB open failed");
+                request.onsuccess = (event) => resolve(event.target.result);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(STORE_NAME)) {
+                        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+                    }
+                };
+            });
+        };
+
+        const saveToIndexedDB = async (data) => {
+            try {
+                const db = await initDB();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], "readwrite");
+                    const store = transaction.objectStore(STORE_NAME);
+                    // 대용량 데이터를 하나의 레코드로 저장 (key: "full_dump")
+                    const item = { id: "full_dump", data: data, timestamp: new Date().getTime() };
+                    const request = store.put(item);
+                    request.onsuccess = () => resolve();
+                    request.onerror = (e) => reject(e);
+                });
+            } catch (e) {
+                console.error("IndexedDB Save Error:", e);
+                throw e;
+            }
+        };
+
+        const loadFromIndexedDB = async () => {
+            try {
+                const db = await initDB();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_NAME], "readonly");
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.get("full_dump");
+                    request.onsuccess = (event) => {
+                        const result = event.target.result;
+                        resolve(result ? result : null);
+                    };
+                    request.onerror = (e) => reject(e);
+                });
+            } catch (e) {
+                console.error("IndexedDB Load Error:", e);
+                return null;
+            }
+        };
+
+        const clearIndexedDB = async () => {
+             const db = await initDB();
+             return new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_NAME], "readwrite");
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.clear();
+                request.onsuccess = () => resolve();
+                request.onerror = (e) => reject(e);
+            });
+        }
 
         // --- HELPER FUNCTIONS ---
+
+        const getSeasonalKeywords = () => {
+            const month = new Date().getMonth() + 1;
+            // 월별 명확한 테마 지정 (여름 키워드가 겨울에 뜨지 않도록)
+            if (month >= 12 || month <= 2) {
+                return {
+                    season: "겨울",
+                    keywords: ["#따뜻한전기장판", "#크리스마스", "#연말정주행", "#겨울방학", "#귤까먹으며"],
+                    desc: "이불 밖은 위험해! 겨울 필수 시청작"
+                };
+            } else if (month >= 3 && month <= 5) {
+                return {
+                    season: "봄",
+                    keywords: ["#봄나들이", "#벚꽃엔딩", "#로맨스", "#새학기", "#설렘주의"],
+                    desc: "살랑살랑 봄바람 타고 온 로맨스"
+                };
+            } else if (month >= 6 && month <= 8) {
+                return {
+                    season: "여름",
+                    keywords: ["#공포특집", "#호러", "#여름휴가", "#바캉스", "#시원한액션"],
+                    desc: "무더위를 날려버릴 시원한 콘텐츠"
+                };
+            } else {
+                return {
+                    season: "가을",
+                    keywords: ["#감성충만", "#독서의계절", "#멜로", "#단풍놀이", "#추석특선"],
+                    desc: "센치한 가을 밤, 감성 충전 타임"
+                };
+            }
+        };
 
         const calculateSimilarity = (s1, s2) => {
             const clean1 = String(s1).replace(/[^a-zA-Z0-9가-힣]/g, "").toLowerCase();
             const clean2 = String(s2).replace(/[^a-zA-Z0-9가-힣]/g, "").toLowerCase();
-            
             if (clean1 === clean2) return 1.0; 
             if (clean1.includes(clean2) || clean2.includes(clean1)) {
                 const ratio = Math.min(clean1.length, clean2.length) / Math.max(clean1.length, clean2.length);
@@ -117,11 +207,17 @@
 
         const fetchRealWeather = async () => {
             try {
-                const res = await fetch('https://wttr.in/?format=j1');
+                // 타임아웃 2초 설정하여 빠른 응답 유도
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                
+                const res = await fetch('https://wttr.in/?format=j1', { signal: controller.signal });
+                clearTimeout(timeoutId);
+
                 const data = await res.json();
                 const current = data.current_condition[0];
-                
                 const desc = current.weatherDesc[0].value.toLowerCase();
+                
                 let simplifiedDesc = "맑음";
                 if (desc.includes('rain') || desc.includes('drizzle')) simplifiedDesc = "비";
                 else if (desc.includes('snow') || desc.includes('ice')) simplifiedDesc = "눈";
@@ -130,15 +226,12 @@
 
                 return {
                     temp: `${current.temp_C}°C`,
-                    weather: simplifiedDesc,
-                    rawDesc: desc
+                    weather: simplifiedDesc
                 };
             } catch (e) {
-                console.error("Weather Fetch Error:", e);
-                const month = new Date().getMonth() + 1;
-                let season = "맑음";
-                if (month >= 12 || month <= 2) season = "추움";
-                return { temp: "Seasonal", weather: season, isFallback: true };
+                // 실패 시 계절 기반 폴백
+                const seasonInfo = getSeasonalKeywords();
+                return { temp: "", weather: seasonInfo.season, isFallback: true };
             }
         };
 
@@ -163,31 +256,14 @@
         };
 
         const LOADING_MESSAGES = [
-            "🍿 팝콘 튀기는 중...",
+            "🍿 캐시된 데이터 확인 중...",
             "🎬 감독님 섭외하러 가는 중...",
             "⚡️ 넷플릭스보다 빠르게...는 노력 중입니다",
             "⛏️ 숨겨진 명작 데이터를 발굴하고 있어요",
-            "📝 이번 주말 책임질 리스트 작성 중",
-            "⭐ 평점 1점짜리는 거르는 중...",
-            "🌊 데이터 바다에서 보물 찾는 중",
-            "🕵️‍♂️ 범인은 바로... 데이터 속에 있습니다",
             "🤖 AI가 시나리오 정독하는 중...",
-            "🏃‍♂️ 배우들 스케줄 확인하러 뛰어가는 중",
-            "🍪 쿠키 영상 찾느라 좀 늦네요...",
-            "❄️ '오겡끼데스까' 외치는 중...",
+            "❄️ 계절에 딱 맞는 콘텐츠 찾는 중...",
             "🛫 데이터 가지러 헐리우드 가는 중",
-            "🧹 지난주 망작들 청소하는 중",
-            "🧙‍♂️ 큐레이션 마법을 부리는 중...",
-            "🧛‍♂️ 밤새 볼 영화 고르는 중",
-            "🔋 당신의 도파민을 충전하는 중...",
-            "📡 오아시스 서버와 교신 시도 중...",
-            "🎭 페르소나 분석 중...",
-            "📺 채널 고정! 리모컨 숨기는 중",
-            "🎻 배경음악 선곡하는 중...",
-            "💤 잠은 죽어서 자는거야... 정주행 준비 중",
-            "👀 스포일러 피해서 데이터 가져오는 중",
-            "💡 번뜩이는 아이디어 생성 중...",
-            "🏴‍☠️ 데이터, 너 내 동료가 돼라!"
+            "📡 Oasis 서버와 교신 시도 중..."
         ];
 
         const getTagStyle = (text) => {
@@ -200,7 +276,8 @@
             return 'bg-blue-50 text-blue-600 border-blue-100';
         };
 
-        // SearchBar Component
+        // --- COMPONENTS ---
+
         const SearchBar = ({ 
             query, 
             setQuery, 
@@ -215,7 +292,7 @@
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                    placeholder="검색어를 입력하세요"
+                    placeholder="검색어 또는 편성 테마를 입력하세요"
                     className={`w-full bg-white border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all placeholder:text-gray-300 ${compact ? 'py-3 pl-4 pr-20 text-base rounded-xl' : 'p-5 pr-24 text-lg rounded-2xl'}`}
                 />
                 <div className={`absolute right-2 flex gap-1 ${compact ? 'top-2' : 'top-3'}`}>
@@ -235,34 +312,30 @@
             </div>
         );
 
-        // Main App Component
         const App = () => {
+            // Core State
             const [query, setQuery] = useState("");
             const [viewState, setViewState] = useState("idle");
-            
             const [dbData, setDbData] = useState([]); 
-            const [results, setResults] = useState([]);
-            const [allMatches, setAllMatches] = useState([]); 
+            const [results, setResults] = useState([]); // 현재 보여지는(편집된) 결과
+            const [originalResults, setOriginalResults] = useState([]); // 필터링 전 원본 매칭 결과
 
+            // UI State
             const [strategy, setStrategy] = useState("");
             const [blockTitle, setBlockTitle] = useState("");
             const [copied, setCopied] = useState(false);
             const [showFilters, setShowFilters] = useState(false);
-            
-            const [todaysPicks, setTodaysPicks] = useState([]);
-            const [context, setContext] = useState({ weather: "", temp: "", trends: [] }); 
-            
-            const [isLoadingData, setIsLoadingData] = useState(true); 
-            const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
-
-            const [isSearching, setIsSearching] = useState(false); 
             const [toastMessage, setToastMessage] = useState(""); 
+            const [loadingMsgIndex, setLoadingMsgIndex] = useState(0);
+            const [isLoadingData, setIsLoadingData] = useState(true);
+            const [isSearching, setIsSearching] = useState(false);
             
-            const today = new Date();
-            const dateString = `${today.getFullYear()}.${today.getMonth() + 1}.${today.getDate()}`;
-            const [sheetName, setSheetName] = useState("데이터 연결 대기중...");
+            // Context State
+            const [context, setContext] = useState({ weather: "", temp: "", trends: [] }); 
+            const [todaysPicks, setTodaysPicks] = useState([]);
+            const [lastUpdated, setLastUpdated] = useState(null);
 
-            // 필터 상태
+            // Filters
             const [selectedGenres, setSelectedGenres] = useState([]);
             const [priceType, setPriceType] = useState("all"); 
             const [minPrice, setMinPrice] = useState(0); 
@@ -276,15 +349,7 @@
 
             const hasActiveFilters = selectedGenres.length > 0 || priceType !== 'all' || includeRestricted;
 
-            const getWeatherIcon = (weatherStr) => {
-                if (!weatherStr) return <Sun size={12} />;
-                const w = String(weatherStr).toLowerCase();
-                
-                if (w.includes('snow') || w.includes('눈') || w.includes('추움')) return <CloudSnow size={12} />;
-                if (w.includes('rain') || w.includes('비')) return <CloudRain size={12} />;
-                if (w.includes('cloud') || w.includes('흐림') || w.includes('구름') || w.includes('안개')) return <Cloud size={12} />;
-                return <Sun size={12} />;
-            };
+            // --- Effects ---
 
             useEffect(() => {
                 if (isLoadingData) {
@@ -295,85 +360,70 @@
                 }
             }, [isLoadingData]);
 
+            // 초기화: 날씨 + 데이터 로드 (캐싱 적용)
             useEffect(() => {
                 const initApp = async () => {
                     setIsLoadingData(true);
-
-                    const weatherPromise = fetchRealWeather();
                     
-                    let dataPromise;
-                    if (GAS_API_URL.includes("YOUR_SCRIPT_ID")) {
-                        dataPromise = new Promise(resolve => {
-                            setTimeout(() => resolve({
-                                status: 'success',
-                                todaysPicks: ["비밀의 숲 정주행", "겨울 감성 영화", "크리스마스 로코", "주말 힐링 예능"],
-                                sheetName: "2025_02_편성데이터", 
-                                data: [
-                                    { id: "CS11197562", title: "통잠", category: "영화", subCategory: "한국영화", price: 10000 },
-                                    { id: "CS001", title: "겨울왕국", category: "영화", subCategory: "애니메이션", price: 5500 },
-                                    { id: "CS001", title: "겨울왕국", category: "영화", subCategory: "애니메이션", price: 0 },
-                                    { id: "CS002", title: "어바웃 타임", category: "영화", subCategory: "로맨스", price: 1500 },
-                                    { id: "CS003", title: "러브 액츄얼리", category: "영화", subCategory: "로맨스", price: 1200 },
-                                    { id: "CS004", title: "나 홀로 집에", category: "영화", subCategory: "가족", price: 1000 },
-                                    { id: "CS005", title: "비밀의 숲", category: "드라마", subCategory: "한국드라마", price: 0 },
-                                    { id: "CS006", title: "응답하라 1988", category: "드라마", subCategory: "드라마", price: 0 },
-                                    { id: "XXX001", title: "성인 영화 예시", category: "성인", subCategory: "에로", price: 5000 },
-                                    { id: "ETC001", title: "기타 영상", category: "기타", subCategory: "기타", price: 100 }
-                                ]
-                            }), 3000); 
-                        });
-                    } else {
-                         dataPromise = fetch(GAS_API_URL)
-                          .then(r => r.json())
-                          .catch(e => {
-                            console.warn("API Fetch failed, using mock data", e);
-                            return {
-                              status: 'success',
-                              todaysPicks: ["비밀의 숲 정주행", "겨울 감성 영화", "크리스마스 로코", "주말 힐링 예능"],
-                              sheetName: "오프라인_샘플데이터", 
-                              data: [
-                                  { id: "CS11197562", title: "통잠", category: "영화", subCategory: "한국영화", price: 10000 },
-                                  { id: "CS001", title: "겨울왕국", category: "영화", subCategory: "애니메이션", price: 5500 },
-                                  { id: "CS001", title: "겨울왕국", category: "영화", subCategory: "애니메이션", price: 0 },
-                                  { id: "CS002", title: "어바웃 타임", category: "영화", subCategory: "로맨스", price: 1500 },
-                                  { id: "CS003", title: "러브 액츄얼리", category: "영화", subCategory: "로맨스", price: 1200 },
-                                  { id: "CS004", title: "나 홀로 집에", category: "영화", subCategory: "가족", price: 1000 },
-                                  { id: "CS005", title: "비밀의 숲", category: "드라마", subCategory: "한국드라마", price: 0 },
-                                  { id: "CS006", title: "응답하라 1988", category: "드라마", subCategory: "드라마", price: 0 },
-                                  { id: "XXX001", title: "성인 영화 예시", category: "성인", subCategory: "에로", price: 5000 },
-                                  { id: "ETC001", title: "기타 영상", category: "기타", subCategory: "기타", price: 100 }
-                              ]
-                            };
-                          });
-                    }
+                    // 1. 날씨 및 시즌 정보 설정
+                    const weatherData = await fetchRealWeather();
+                    const seasonalInfo = getSeasonalKeywords(); // 현재 월 기준 강력한 시즌 키워드
+                    
+                    setContext({
+                        weather: weatherData.weather,
+                        temp: weatherData.temp,
+                        trends: seasonalInfo.keywords
+                    });
+                    
+                    // 초기 추천 검색어 설정 (날씨가 있으면 날씨 기반, 아니면 시즌 기반)
+                    // AI 추천이 이상할 경우를 대비해 클라이언트단에서 고정된 시즌 테마를 우선시 할 수도 있음
+                    setTodaysPicks(seasonalInfo.keywords.slice(0, 4));
 
+                    // 2. 데이터 로드 (캐싱 로직: IndexedDB 사용)
                     try {
-                        const [weatherData, json] = await Promise.all([weatherPromise, dataPromise]);
-                        
-                        const month = new Date().getMonth() + 1;
-                        const seasonalTrends = 
-                            month === 12 ? ["#크리스마스", "#연말결산", "#로맨스"] :
-                            month === 1 ? ["#새해", "#가족", "#해돋이"] :
-                            month === 7 || month === 8 ? ["#공포", "#여름휴가"] : ["#주말", "#힐링"];
+                        const cached = await loadFromIndexedDB();
+                        let loadedData = null;
+                        let loadedTime = null;
 
-                        setContext({
-                            weather: weatherData.weather,
-                            temp: weatherData.temp,
-                            trends: seasonalTrends
-                        });
-
-                        if (json.status === 'success') {
-                            setTodaysPicks(json.todaysPicks || []);
-                            setDbData(json.data || []);
-                            setSheetName(json.sheetName || `${dateString}_편성데이터`);
-                            if (json.data && json.data.length > 0) {
-                                showToast(`${json.data.length}건 로드 완료`);
+                        if (cached) {
+                            const now = new Date().getTime();
+                            if (now - cached.timestamp < CACHE_EXPIRY_MS) {
+                                loadedData = cached.data;
+                                loadedTime = new Date(cached.timestamp);
+                                console.log("Using IndexedDB cached data");
                             }
                         }
+
+                        if (!loadedData) {
+                            // 캐시 없거나 만료됨 -> 서버 요청
+                            console.log("Fetching fresh DB data");
+                            const response = await fetch(GAS_API_URL); 
+                            
+                            const json = await response.json();
+                            if (json.status === 'success' && json.data) {
+                                loadedData = json.data;
+                                loadedTime = new Date();
+                                // 캐시 저장 (IndexedDB)
+                                await saveToIndexedDB(loadedData);
+                            } else {
+                                throw new Error("Invalid API Data");
+                            }
+                        }
+
+                        if (loadedData) {
+                            setDbData(loadedData);
+                            setLastUpdated(loadedTime);
+                            showToast(`데이터 로드 완료 (${loadedData.length.toLocaleString()}건)`);
+                        }
+
                     } catch (error) {
-                        console.error("Init Failed:", error);
-                        showToast("초기화 실패");
-                        setSheetName("오프라인 모드");
+                        console.error("Data Load Failed:", error);
+                        showToast("데이터 로드 실패 (오프라인 모드)");
+                        // Fallback Mock Data
+                        setDbData([
+                            { id: "CS_MOCK_01", title: "캐시 로드 실패 예시1", category: "영화", price: 0 },
+                            { id: "CS_MOCK_02", title: "캐시 로드 실패 예시2", category: "드라마", price: 1000 }
+                        ]);
                     } finally {
                         setIsLoadingData(false);
                     }
@@ -382,154 +432,113 @@
                 initApp();
             }, []);
 
+            // --- Handlers ---
+
+            const clearCache = async () => {
+                try {
+                    await clearIndexedDB();
+                    window.location.reload();
+                } catch (e) {
+                    console.error("Cache clear failed", e);
+                    alert("캐시 초기화 중 오류가 발생했습니다.");
+                }
+            };
+
             const showToast = (msg) => {
                 setToastMessage(msg);
                 setTimeout(() => setToastMessage(""), 3000);
             };
 
-            const applyLocalFilters = (candidates = allMatches) => {
-                const finalResults = candidates
-                    .filter(item => {
-                        if (item.score <= 0) return false;
-                        if (!includeRestricted && ['성인', '기타', 'adult', 'etc'].includes(item.category)) return false;
-                        if (selectedGenres.length > 0 && !selectedGenres.includes(item.category)) return false;
-                        if (priceType === 'free' && item.minPrice > 0) return false;
-                        if (priceType === 'paid') {
-                            if (item.minPrice === 0) return false; 
-                            if (item.minPrice < minPrice) return false; 
-                        }
-                        return true;
-                    })
-                    .sort((a, b) => b.score - a.score)
-                    .slice(0, 30);
-
-                setResults(finalResults);
-            };
-
+            // 검색 핸들러
             const handleSearch = async (inputQuery) => {
                 const targetQuery = inputQuery || query;
                 if (!targetQuery) return;
 
                 setQuery(targetQuery);
                 setViewState("thinking");
-                setIsSearching(true); 
-                setResults([]); 
-                setAllMatches([]); 
+                setIsSearching(true);
+                setResults([]);
 
                 const currentYear = new Date().getFullYear();
-                const augmentedQuery = `${targetQuery} (${currentYear}년 기준)`;
+                const augmentedQuery = `${targetQuery} (${currentYear}년 ${context.weather} 날씨)`;
 
                 try {
+                    // AI 추천 텍스트/전략 가져오기 (이 부분은 가벼우므로 매번 호출해도 됨. 단, 데이터 매칭은 로컬 dbData 사용)
+                    // 만약 이것도 캐싱하고 싶다면 sessionStorage 등 활용 가능. 여기서는 생략.
                     let aiResponse = { recommendedTitles: [], strategy: "", blockTitle: "" };
-                    
+
                     try {
-                        if (GAS_API_URL.includes("YOUR_SCRIPT_ID")) throw new Error("Mock Mode");
+                        // GAS API에 '검색 의도'만 파악해달라고 요청 (전체 데이터 반환 X)
+                        const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}&mode=planning`);
+                        // mode=planning 파라미터는 가상의 구분자. 실제 GAS가 이를 처리 못하면 전체 데이터를 줄 수도 있음.
+                        // 하지만 여기서는 클라이언트 로직이 중요.
                         
-                        const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}`);
-                        if (!response.ok) throw new Error("API Error");
-                        const json = await response.json();
-                        if (json.status === 'success') {
-                             aiResponse = json;
-                        } else {
-                             throw new Error("API Returned Error Status");
+                        if (response.ok) {
+                            const json = await response.json();
+                            aiResponse = json;
                         }
                     } catch (e) {
-                        // Fallback Logic
-                        await new Promise(r => setTimeout(r, 1500));
-                        aiResponse = {
-                            recommendedTitles: [
-                                { title: "비밀의 숲", reason: "웰메이드 추리극", type: "드라마", keywords: ["#조승우", "#배두나", "#추리물", "#웰메이드"] },
-                                { title: "겨울왕국", reason: "눈 내리는 날 아이들과 함께 ❄️", type: "영화", keywords: ["#엘사", "#디즈니", "#OST"] },
-                                { title: "어바웃 타임", reason: "시간 여행 로맨스의 정석", type: "영화", keywords: ["#레이첼맥아담스", "#시간여행", "#감동"] },
-                                { title: "나 홀로 집에", reason: "크리스마스에는 케빈과 함께", type: "영화", keywords: ["#케빈", "#크리스마스", "#도둑"] },
-                                { title: "응답하라 1988", reason: "따뜻한 가족 드라마", type: "드라마", keywords: ["#가족", "#레트로", "#박보검"] }
-                            ],
-                            strategy: `❄️ 날씨(${context.weather})와 ${currentYear}년 트렌드를 반영한 큐레이션 (Offline Mode)`,
-                            blockTitle: "🔍 요청하신 큐레이션 결과"
-                        };
+                        console.warn("AI Planning API Failed, using local heuristic");
                     }
 
-                    setStrategy(aiResponse.strategy || "키워드 기반 매칭");
-                    setBlockTitle(aiResponse.blockTitle || "추천 리스트");
+                    // Fallback or Apply AI Response
+                    const seasonalInfo = getSeasonalKeywords();
+                    setStrategy(aiResponse.strategy || `☁️ ${context.weather} 날씨와 ${seasonalInfo.season} 시즌 감성을 담은 큐레이션`);
+                    setBlockTitle(aiResponse.blockTitle || `[${seasonalInfo.season}] ${targetQuery} 추천 리스트`);
 
+                    // 검색 로직 (로컬 dbData 활용)
                     const rawRecs = aiResponse.recommendedTitles || [];
-                    const normalizedRecs = rawRecs.map(r => {
-                        const title = typeof r === 'string' ? r : r.title;
-                        const reason = typeof r === 'string' ? "AI 추천작" : r.reason;
-                        const type = r.type || "";
-                        const keywords = Array.isArray(r.keywords) ? r.keywords : [];
-                        return { 
-                            rawTitle: title,
-                            cleanTitle: String(title).replace(/\s/g, '').toLowerCase(),
-                            reason,
-                            type,
-                            keywords
-                        };
-                    });
-                    
-                    const matches = dbData.map(item => {
+                    const normalizedRecs = rawRecs.map(r => ({
+                        rawTitle: typeof r === 'string' ? r : r.title,
+                        cleanTitle: String(typeof r === 'string' ? r : r.title).replace(/\s/g, '').toLowerCase(),
+                        reason: r.reason || "AI 추천",
+                        type: r.type || "",
+                        keywords: r.keywords || []
+                    }));
+
+                    // 스코어링 및 매칭
+                    const candidates = dbData.map(item => {
                         const myTitle = (item.title || "").replace(/\s/g, '').toLowerCase();
                         let score = 0;
-                        let matchDetails = "";
-                        let matchedKeywords = [];
+                        let aiReason = "";
                         
-                        let bestMatchScore = 0;
-                        let bestMatchRec = null;
-
+                        // 1. AI 추천작과 유사도 비교
+                        let maxSim = 0;
                         for (const rec of normalizedRecs) {
                             const sim = calculateSimilarity(myTitle, rec.cleanTitle);
-                            if (sim > bestMatchScore) {
-                                bestMatchScore = sim;
-                                bestMatchRec = rec;
+                            if (sim > maxSim) {
+                                maxSim = sim;
+                                aiReason = rec.reason;
                             }
                         }
-
-                        if (bestMatchScore >= 0.8) {
-                            score = bestMatchScore * 100;
-                            matchDetails = `AI: ${bestMatchRec.rawTitle}`;
-                            matchedKeywords = bestMatchRec.keywords;
-                            
-                            if (bestMatchRec.type && item.category && !item.category.includes(bestMatchRec.type)) {
-                                score -= 20; 
-                            }
-                        } else {
-                            const cleanQuery = targetQuery.replace(/\s/g, '');
-                            if (cleanQuery.length > 1 && myTitle.includes(cleanQuery)) {
-                                score = 40;
-                                matchDetails = "키워드 포함";
-                            }
+                        
+                        // 2. 키워드 단순 포함 여부
+                        if (myTitle.includes(targetQuery.replace(/\s/g, ''))) {
+                            score += 50; // 검색어 직접 포함 시 가산점
                         }
 
-                        return { ...item, score, matchDebug: matchDetails, aiKeywords: matchedKeywords };
+                        if (maxSim > 0.6) {
+                            score += maxSim * 100;
+                        }
+
+                        return { ...item, score, aiReason, prices: [item.price], minPrice: item.price };
+                    })
+                    .filter(item => item.score > 30) // 최소 점수 커트라인
+                    .sort((a, b) => b.score - a.score);
+
+                    // 중복 제거 (ID 기준)
+                    const uniqueMap = new Map();
+                    candidates.forEach(item => {
+                        if (!uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
                     });
-
-                    const mergedMap = new Map();
-                    matches.forEach(item => {
-                        if (!mergedMap.has(item.id)) {
-                            mergedMap.set(item.id, {
-                                ...item,
-                                prices: [item.price], 
-                                minPrice: item.price
-                            });
-                        } else {
-                            const existing = mergedMap.get(item.id);
-                            if (!existing.prices.includes(item.price)) {
-                                existing.prices.push(item.price);
-                                existing.prices.sort((a, b) => a - b);
-                            }
-                            existing.minPrice = Math.min(existing.minPrice, item.price);
-                            existing.score = Math.max(existing.score, item.score);
-                            if (item.aiKeywords && item.aiKeywords.length > 0) {
-                                existing.aiKeywords = item.aiKeywords;
-                            }
-                        }
-                    });
-
-                    const candidates = Array.from(mergedMap.values());
                     
-                    setAllMatches(candidates);
-                    applyLocalFilters(candidates);
+                    const finalCandidates = Array.from(uniqueMap.values()).slice(0, 50); // 최대 50개
 
+                    setOriginalResults(finalCandidates);
+                    
+                    // 초기 필터 적용
+                    applyFilters(finalCandidates);
+                    
                     setViewState("result");
 
                 } catch (e) {
@@ -541,80 +550,128 @@
                 }
             };
 
-            const handleApplyFilter = () => {
-                setShowFilters(false);
-                if (viewState === 'result') {
-                    applyLocalFilters(allMatches);
-                } else {
-                    handleSearch();
-                }
+            // 필터 적용 함수
+            const applyFilters = (sourceData = originalResults) => {
+                let filtered = sourceData.filter(item => {
+                    if (!includeRestricted && ['성인', '기타', 'adult', 'etc'].includes(item.category)) return false;
+                    if (selectedGenres.length > 0 && !selectedGenres.includes(item.category)) return false;
+                    if (priceType === 'free' && item.minPrice > 0) return false;
+                    if (priceType === 'paid') {
+                        if (item.minPrice === 0) return false; 
+                        if (item.minPrice < minPrice) return false; 
+                    }
+                    return true;
+                });
+                setResults(filtered);
             };
 
+            const handleApplyFilterUI = () => {
+                setShowFilters(false);
+                applyFilters();
+            };
+
+            // --- 편집 기능 ---
+
+            const moveItem = (index, direction) => {
+                const newResults = [...results];
+                if (direction === 'up' && index > 0) {
+                    [newResults[index], newResults[index - 1]] = [newResults[index - 1], newResults[index]];
+                } else if (direction === 'down' && index < newResults.length - 1) {
+                    [newResults[index], newResults[index + 1]] = [newResults[index + 1], newResults[index]];
+                }
+                setResults(newResults);
+            };
+
+            const removeItem = (index) => {
+                const newResults = results.filter((_, i) => i !== index);
+                setResults(newResults);
+            };
+
+            // --- 내보내기 기능 ---
+
             const copyToClipboard = () => {
-                const header = `[편성 블록명] ${blockTitle}\n`;
-                const body = results.map(r => `${r.id}\t${r.title}`).join('\n'); 
+                // 요구사항: 시리즈 ID만 뽑아내기
+                const body = results.map(r => r.id).join('\n');
                 
                 const textArea = document.createElement("textarea");
-                textArea.value = header + "\n" + body;
+                textArea.value = body;
                 document.body.appendChild(textArea);
                 textArea.select();
                 document.execCommand('copy');
                 document.body.removeChild(textArea);
+                
                 setCopied(true);
+                showToast(`ID ${results.length}건 복사 완료`);
                 setTimeout(() => setCopied(false), 2000);
             };
 
             const downloadExcel = () => {
-                const blockHeader = `추천 편성 블록명,${blockTitle}\n\n`;
-                const colHeader = "시리즈ID,타이틀명,가격정보,서브카테고리,AI태그\n";
-                const csvRows = results.map(r => {
-                    const cleanTitle = (r.title || "").replace(/,/g, " "); 
-                    const priceStr = r.prices.join(" / ");
-                    const tags = (r.aiKeywords || []).join(" ");
-                    return `${r.id},${cleanTitle},"${priceStr}",${r.subCategory},${tags}`;
-                }).join('\n');
+                // 요구사항: A열 ID, B열 시작일시, C열 종료일시
+                // CSV 포맷 (BOM 포함)
+                
+                // 날짜 포맷터
+                const formatDate = (date) => {
+                    const y = date.getFullYear();
+                    const m = String(date.getMonth() + 1).padStart(2, '0');
+                    const d = String(date.getDate()).padStart(2, '0');
+                    return `${y}-${m}-${d} 00:00:00`;
+                };
+                
+                const today = new Date();
+                const farFuture = new Date();
+                farFuture.setFullYear(2099, 11, 31); // 2099-12-31
+
+                const startDate = formatDate(today);
+                const endDate = formatDate(farFuture).replace("00:00:00", "23:59:59");
+
+                let csvContent = "시리즈ID,편성시작일시,편성종료일시\n";
+                
+                results.forEach(r => {
+                    // CSV Injection 방지 및 텍스트 처리
+                    const safeId = String(r.id).replace(/,/g, ""); 
+                    csvContent += `${safeId},${startDate},${endDate}\n`;
+                });
 
                 const BOM = '\uFEFF';
-                const blob = new Blob([BOM + blockHeader + colHeader + csvRows], { type: 'text/csv;charset=utf-8;' });
+                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const link = document.createElement('a');
                 link.href = url;
-                link.setAttribute('download', `편성리스트_${dateString}_${query}.csv`);
+                link.setAttribute('download', `편성업로드_${dateString}_${query}.csv`);
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
             };
 
-            const toggleGenre = (genre) => {
-                setSelectedGenres(prev => 
-                    prev.includes(genre) ? prev.filter(g => g !== genre) : [...prev, genre]
-                );
+            const dateString = `${new Date().getFullYear()}${String(new Date().getMonth()+1).padStart(2,'0')}${String(new Date().getDate()).padStart(2,'0')}`;
+
+            // --- Render Helpers ---
+
+            const getWeatherIcon = (weatherStr) => {
+                if (!weatherStr) return <Sun size={12} />;
+                const w = String(weatherStr).toLowerCase();
+                if (w.includes('snow') || w.includes('눈') || w.includes('추움')) return <CloudSnow size={12} />;
+                if (w.includes('rain') || w.includes('비')) return <CloudRain size={12} />;
+                if (w.includes('cloud') || w.includes('흐림') || w.includes('구름') || w.includes('안개')) return <Cloud size={12} />;
+                return <Sun size={12} />;
             };
 
-            const resetApp = () => {
-                setViewState("idle");
-                setQuery("");
-                setResults([]);
-                setAllMatches([]);
-            };
+            // ---------------- UI RENDER ----------------
 
             if (isLoadingData) {
                 return (
                     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
                         <div className="bg-white p-8 rounded-3xl shadow-xl flex flex-col items-center max-w-sm w-full border border-slate-100 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-400 to-purple-500 animate-pulse"></div>
-                            
                             <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-6 animate-bounce">
                                 <Sparkles size={32} className="text-blue-600" />
                             </div>
-                            
                             <h2 className="text-xl font-bold text-slate-800 mb-4 transition-all duration-500 min-h-[3rem] flex items-center justify-center break-keep">
                                 {LOADING_MESSAGES[loadingMsgIndex]}
                             </h2>
-                            
                             <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-                                <Server size={12} />
-                                <span>Oasis 서버 연결 중...</span>
+                                <Database size={12} />
+                                <span>로컬 저장소 확인 및 데이터 동기화 중...</span>
                             </div>
                         </div>
                     </div>
@@ -634,19 +691,29 @@
                     {/* Header */}
                     <header className="bg-white px-5 pt-6 pb-4 sticky top-0 z-20 border-b border-gray-100">
                         <div className="flex justify-between items-center mb-4">
-                            <div className="flex items-center gap-2" onClick={resetApp}>
+                            <div className="flex items-center gap-2" onClick={() => { setViewState("idle"); setQuery(""); }}>
                                 <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white cursor-pointer shadow-blue-200 shadow-md">
                                     <Sparkles size={18} fill="currentColor" />
                                 </div>
                                 <h1 className="font-bold text-xl tracking-tight cursor-pointer">AI Curator</h1>
                             </div>
                             
-                            <div className="flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100 shadow-sm">
-                                <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                <span className="text-[11px] font-bold text-green-800 tracking-tight flex items-center gap-1.5">
-                                    <FileSpreadsheet size={12} className="text-green-600"/>
-                                    Data
-                                </span>
+                            <div className="flex items-center gap-2">
+                                {lastUpdated && (
+                                    <span className="text-[10px] text-gray-400 hidden sm:inline-block">
+                                        Update: {lastUpdated.toLocaleTimeString()}
+                                    </span>
+                                )}
+                                <button onClick={clearCache} className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500 hover:bg-gray-200">
+                                    캐시초기화
+                                </button>
+                                <div className="flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100 shadow-sm">
+                                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                                    <span className="text-[11px] font-bold text-green-800 tracking-tight flex items-center gap-1.5">
+                                        <FileSpreadsheet size={12} className="text-green-600"/>
+                                        {dbData.length.toLocaleString()}건
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -673,7 +740,6 @@
                         {/* VIEW: Idle */}
                         {viewState === "idle" && (
                             <div className="flex flex-col gap-6 mt-4 animate-fade-in max-w-3xl mx-auto">
-                                
                                 <SearchBar 
                                     query={query} 
                                     setQuery={setQuery} 
@@ -682,50 +748,26 @@
                                     hasFilters={hasActiveFilters}
                                 />
 
-                                <div className="px-2 flex gap-3 text-sm text-gray-400">
-                                    <span className="font-bold text-gray-500 shrink-0">예시:</span>
-                                    <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-                                        <span className="cursor-pointer hover:text-blue-500" onClick={() => setQuery("눈오는 날 영화")}>눈오는 날 영화</span>
-                                        <span>·</span>
-                                        <span className="cursor-pointer hover:text-blue-500" onClick={() => setQuery("주말 힐링 예능")}>주말 힐링 예능</span>
-                                        <span>·</span>
-                                        <span className="cursor-pointer hover:text-blue-500" onClick={() => setQuery("크리스마스")}>크리스마스</span>
-                                    </div>
-                                </div>
-
                                 <div className="space-y-4 mt-2">
                                     <div className="flex justify-between items-center px-1">
-                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">AI Recommendation</p>
-                                        <span className="text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">Weather Based</span>
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today's Season Pick</p>
+                                        <span className="text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
+                                            {getSeasonalKeywords().season} 추천
+                                        </span>
                                     </div>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        {todaysPicks.length > 0 ? todaysPicks.map((q, i) => (
+                                        {todaysPicks.map((q, i) => (
                                             <button
                                                 key={i}
-                                                onClick={() => handleSearch(q)}
+                                                onClick={() => handleSearch(q.replace("#", ""))}
                                                 className={`p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all h-full border ${getRandomColorClass(i)}`}
                                             >
                                                 <div className="text-lg mb-1">{getRandomEmoji(i)}</div>
                                                 {q}
                                             </button>
-                                        )) : ([1,2,3,4].map(n => <div key={n} className="h-20 bg-gray-100 rounded-xl animate-pulse"></div>))}
+                                        ))}
                                     </div>
                                 </div>
-
-                                {(hasActiveFilters) && (
-                                    <div className="bg-blue-50 p-3 rounded-lg flex items-start gap-2 text-xs text-blue-700 border border-blue-100">
-                                        <Filter size={14} className="mt-0.5" />
-                                        <div>
-                                            <span className="font-bold">적용된 필터:</span> <br/>
-                                            {selectedGenres.length > 0 && `장르: ${selectedGenres.join(', ')}`}
-                                            {selectedGenres.length > 0 && (priceType !== 'all' || includeRestricted) && ' | '}
-                                            {priceType === 'free' && '가격: 무료'}
-                                            {priceType === 'paid' && `가격: 유료 (${minPrice.toLocaleString()}원↑)`}
-                                            {(priceType !== 'all' && includeRestricted) && ' | '}
-                                            {includeRestricted && <span className="text-red-500 font-bold">성인/기타 포함</span>}
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         )}
 
@@ -740,11 +782,11 @@
                                 </div>
                                 <div className="text-center space-y-1">
                                     <h3 className="text-lg font-bold text-gray-800">
-                                        AI 큐레이션 진행 중...
+                                        큐레이션 생성 중...
                                     </h3>
                                     <p className="text-sm text-gray-500">
-                                        유사도 분석 및 중복 데이터<br/>
-                                        병합 작업을 수행하고 있습니다.
+                                        로컬 데이터베이스에서 최적의 콘텐츠를<br/>
+                                        매칭하고 있습니다.
                                     </p>
                                 </div>
                             </div>
@@ -753,7 +795,6 @@
                         {/* VIEW: Result */}
                         {viewState === "result" && (
                             <div className="space-y-6 animate-slide-up" ref={resultRef}>
-                                
                                 <div className="mb-6">
                                     <SearchBar 
                                         query={query} 
@@ -763,15 +804,10 @@
                                         compact={true} 
                                         hasFilters={hasActiveFilters}
                                     />
-                                    
                                     {(hasActiveFilters) && (
                                         <div className="mt-2 text-[10px] text-blue-600 font-bold flex gap-2 overflow-hidden whitespace-nowrap px-1">
                                             <Filter size={10} className="mt-0.5"/>
-                                            <span>필터 적용 중:</span>
-                                            {selectedGenres.length > 0 && <span>{selectedGenres.join(', ')}</span>}
-                                            {priceType === 'free' && <span>| 무료</span>}
-                                            {priceType === 'paid' && <span>| 유료 ({minPrice.toLocaleString()}원↑)</span>}
-                                            {includeRestricted && <span className="text-red-500">| 성인포함</span>}
+                                            <span>필터 적용 중</span>
                                         </div>
                                     )}
                                 </div>
@@ -780,13 +816,13 @@
                                     <Edit3 className="absolute top-5 right-5 text-white opacity-50" size={20} />
                                     <div className="relative z-10">
                                         <div className="flex items-center gap-2 mb-3 text-purple-200 text-xs font-bold uppercase tracking-wider">
-                                            <Sparkles size={12} /> AI Recommended Title
+                                            <Sparkles size={12} /> AI Curation Block
                                         </div>
                                         <h3 className="text-2xl font-bold leading-snug pr-8 tracking-tight">
                                             {blockTitle}
                                         </h3>
                                         <p className="text-xs text-purple-200 mt-3 opacity-80 flex items-center gap-1">
-                                            <Download size={10} /> 엑셀 다운로드 시 매칭 상세 사유가 포함됩니다.
+                                            <Download size={10} /> 다운로드 시 '편성업로드' 양식(CSV)으로 저장됩니다.
                                         </p>
                                     </div>
                                 </div>
@@ -796,7 +832,7 @@
                                         <Zap size={18} />
                                     </div>
                                     <div>
-                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Curator Strategy</div>
+                                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Strategy</div>
                                         <div className="text-sm text-slate-700 font-medium">{strategy}</div>
                                     </div>
                                 </div>
@@ -804,77 +840,68 @@
                                 <div className="flex items-center justify-between px-1 pt-2">
                                     <h4 className="font-bold text-gray-800 flex items-center gap-2 text-lg">
                                         <CheckCircle2 size={20} className="text-green-500" />
-                                        추천 결과 ({results.length}건)
+                                        편성 리스트 ({results.length}건)
                                     </h4>
+                                    <span className="text-[10px] text-gray-400">순서 변경 및 삭제 가능</span>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-3">
                                     {results.length > 0 ? results.map((item, idx) => (
-                                        <div key={idx} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow group">
-                                            <div>
-                                                <div className="flex justify-between items-start gap-3">
-                                                    <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded font-mono font-bold shrink-0 border border-slate-200 h-fit mt-0.5">
-                                                        {item.id}
-                                                    </span>
-                                                    <h5 className="font-bold text-gray-900 text-lg leading-tight break-keep flex-1 text-right">
+                                        <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex items-center gap-4 group hover:border-blue-200 transition-colors">
+                                            {/* 순서 변경 컨트롤 */}
+                                            <div className="flex flex-col gap-1 text-gray-300">
+                                                <button 
+                                                    onClick={() => moveItem(idx, 'up')} 
+                                                    disabled={idx === 0}
+                                                    className="hover:text-blue-500 disabled:opacity-20"
+                                                >
+                                                    <ArrowUp size={16} />
+                                                </button>
+                                                <button 
+                                                    onClick={() => moveItem(idx, 'down')} 
+                                                    disabled={idx === results.length - 1}
+                                                    className="hover:text-blue-500 disabled:opacity-20"
+                                                >
+                                                    <ArrowDown size={16} />
+                                                </button>
+                                            </div>
+
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex justify-between items-start mb-1">
+                                                    <h5 className="font-bold text-gray-900 text-base truncate pr-2">
                                                         {item.title}
                                                     </h5>
-                                                </div>
-                                                
-                                                <div className="flex justify-end flex-wrap gap-1 mt-3">
-                                                    <span className={`px-2 py-1 rounded text-[10px] font-bold border flex items-center gap-1 ${getTagStyle(item.subCategory)}`}>
-                                                        <Hash size={10} /> {item.subCategory}
+                                                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-mono shrink-0">
+                                                        {item.id}
                                                     </span>
-
-                                                    {item.aiKeywords && item.aiKeywords.length > 0 ? (
-                                                        item.aiKeywords.map((k, kIdx) => (
-                                                            <span key={kIdx} className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded flex items-center gap-1 border border-blue-100">
-                                                                {k}
-                                                            </span>
-                                                        ))
-                                                    ) : null}
                                                 </div>
-                                            </div>
-
-                                            <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-50">
-                                                <span className="text-xs text-gray-400">
-                                                    {item.prices.length > 1 ? (
-                                                        <span className="flex items-center gap-1">
-                                                            {item.prices.map((p, i) => (
-                                                                <React.Fragment key={i}>
-                                                                    <span className={`font-bold ${p === 0 ? 'text-green-600' : 'text-slate-600'}`}>
-                                                                        {p === 0 ? "무료" : `${p.toLocaleString()}원`}
-                                                                    </span>
-                                                                    {i < item.prices.length - 1 && <span className="text-gray-300">/</span>}
-                                                                </React.Fragment>
-                                                            ))}
-                                                        </span>
-                                                    ) : (
-                                                        <span className={`font-bold ${item.prices[0] === 0 ? 'text-green-600' : 'text-slate-600'}`}>
-                                                            {item.prices[0] === 0 ? "무료" : `${item.prices[0].toLocaleString()}원`}
+                                                <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
+                                                        {item.subCategory}
+                                                    </span>
+                                                    {item.aiReason && (
+                                                        <span className="truncate text-blue-500 max-w-[200px]">
+                                                            💡 {item.aiReason}
                                                         </span>
                                                     )}
-                                                </span>
+                                                </div>
                                             </div>
+
+                                            <button 
+                                                onClick={() => removeItem(idx)}
+                                                className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
                                         </div>
                                     )) : (
-                                        <div className="col-span-full text-center py-16 text-gray-400">
-                                            <div className="inline-block p-4 bg-gray-50 rounded-full mb-3">
-                                                <AlertTriangle size={24} className="text-gray-300" />
-                                            </div>
-                                            <p className="font-bold text-gray-600">추천 결과가 없습니다.</p>
-                                            <p className="text-xs text-gray-400 mt-2 max-w-xs mx-auto leading-relaxed">
-                                                AI가 추천한 타이틀과 정확히 일치하는 DB 콘텐츠가 없거나,
-                                                설정된 필터에 의해 제외되었을 수 있습니다.
-                                            </p>
-                                            <button onClick={() => { setPriceType('all'); setSelectedGenres([]); setIncludeRestricted(false); applyLocalFilters(); }} className="text-blue-600 text-sm font-bold mt-4 underline">
-                                                필터 초기화
-                                            </button>
+                                        <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
+                                            <AlertTriangle size={24} className="mx-auto mb-2 text-gray-300" />
+                                            <p>검색 결과가 없습니다.</p>
                                         </div>
                                     )}
                                 </div>
-
-                                <div className="h-20"></div>
+                                <div className="h-24"></div>
                             </div>
                         )}
                     </main>
@@ -882,10 +909,10 @@
                     {/* Floating Action Bar */}
                     {viewState === "result" && (
                         <div className="absolute bottom-6 left-5 right-5 z-30 flex justify-center pointer-events-none">
-                            <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/80 backdrop-blur-sm p-2 rounded-2xl border border-white/50 shadow-2xl">
+                            <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/90 backdrop-blur-md p-2 rounded-2xl border border-white/50 shadow-2xl">
                                 <button 
-                                    onClick={resetApp}
-                                    className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:text-gray-800 active:scale-95 transition-all"
+                                    onClick={() => { setViewState("idle"); setQuery(""); }}
+                                    className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition-all"
                                     title="초기화"
                                 >
                                     <RotateCcw size={22} />
@@ -894,7 +921,7 @@
                                 <button 
                                     onClick={downloadExcel}
                                     className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-green-600 hover:bg-green-50 active:scale-95 transition-all"
-                                    title="엑셀(CSV) 다운로드"
+                                    title="편성 업로드 CSV 다운로드"
                                 >
                                     <Download size={22} />
                                 </button>
@@ -906,12 +933,12 @@
                                     {copied ? (
                                         <>
                                             <CheckCircle2 size={22} />
-                                            ID 복사 완료!
+                                            ID 복사 완료
                                         </>
                                     ) : (
                                         <>
                                             <Copy size={22} />
-                                            리스트 복사 (ID)
+                                            ID 리스트 복사
                                         </>
                                     )}
                                 </button>
@@ -919,19 +946,17 @@
                         </div>
                     )}
 
-                    {/* Filters Modal: Fixed Position으로 스크롤 이슈 해결 */}
+                    {/* Filters Modal */}
                     {showFilters && (
                         <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center sm:justify-center animate-fade-in" onClick={(e) => e.target === e.currentTarget && setShowFilters(false)}>
                             <div className="bg-white w-full sm:w-[400px] sm:rounded-3xl rounded-t-3xl p-6 pb-10 space-y-6 animate-slide-up shadow-2xl">
                                 <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-bold">검색 필터</h3>
+                                    <h3 className="text-xl font-bold">상세 필터</h3>
                                     <button onClick={() => setShowFilters(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
                                         <X size={20} />
                                     </button>
                                 </div>
-
                                 <div className="space-y-4">
-                                    {/* 성인/기타 포함 여부 */}
                                     <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
                                         <span className="text-sm font-bold text-red-600">성인/기타 카테고리 포함</span>
                                         <button 
@@ -941,70 +966,42 @@
                                             <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${includeRestricted ? 'translate-x-5' : ''}`}></div>
                                         </button>
                                     </div>
-
                                     <div className="space-y-2">
-                                        <label className="text-sm font-bold text-gray-500">장르 (Category)</label>
+                                        <label className="text-sm font-bold text-gray-500">장르</label>
                                         <div className="flex flex-wrap gap-2">
-                                            {allGenres.length > 0 ? allGenres.map(g => (
+                                            {allGenres.map(g => (
                                                 <button 
                                                     key={g}
-                                                    onClick={() => toggleGenre(g)}
-                                                    className={`px-4 py-2 rounded-full text-sm font-medium border transition-all ${selectedGenres.includes(g) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}
+                                                    onClick={() => setSelectedGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])}
+                                                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${selectedGenres.includes(g) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
                                                 >
                                                     {g}
                                                 </button>
-                                            )) : <span className="text-sm text-gray-400">데이터 로드 후 선택 가능</span>}
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                                        <label className="text-sm font-bold text-gray-500 flex items-center gap-1">
+                                            <DollarSign size={14} /> 가격
+                                        </label>
+                                        <div className="flex gap-2">
+                                            {[{l:'전체', v:'all'}, {l:'무료', v:'free'}, {l:'유료', v:'paid'}].map(opt => (
+                                                <button
+                                                    key={opt.v}
+                                                    onClick={() => setPriceType(opt.v)}
+                                                    className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${priceType === opt.v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                                                >
+                                                    {opt.l}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
                                 </div>
-
-                                {/* 가격 필터 */}
-                                <div className="space-y-4 pt-2 border-t border-gray-100">
-                                    <label className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                                        <DollarSign size={14} /> 가격 (Price)
-                                    </label>
-                                    
-                                    <div className="flex gap-2">
-                                        {[{l:'전체', v:'all'}, {l:'무료', v:'free'}, {l:'유료', v:'paid'}].map(opt => (
-                                            <button
-                                                key={opt.v}
-                                                onClick={() => setPriceType(opt.v)}
-                                                className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${priceType === opt.v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'}`}
-                                            >
-                                                {opt.l}
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {priceType === 'paid' && (
-                                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 animate-fade-in">
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-xs font-bold text-gray-500">최소 가격 설정</span>
-                                                <span className="text-sm font-bold text-blue-600">{minPrice.toLocaleString()}원 이상</span>
-                                            </div>
-                                            <input 
-                                                type="range" 
-                                                min="0" 
-                                                max="20000" 
-                                                step="500" 
-                                                value={minPrice} 
-                                                onChange={(e) => setMinPrice(Number(e.target.value))}
-                                                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                            />
-                                            <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-1">
-                                                <span>0원</span>
-                                                <span>10,000원</span>
-                                                <span>20,000원+</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
                                 <button 
-                                    onClick={handleApplyFilter}
+                                    onClick={handleApplyFilterUI}
                                     className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-colors mt-2"
                                 >
-                                    적용하기
+                                    필터 적용하기
                                 </button>
                             </div>
                         </div>
