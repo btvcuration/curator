@@ -433,7 +433,6 @@
                     let aiResponse = { recommendedTitles: [], strategy: "", blockTitle: "" };
 
                     try {
-                        // GAS API 호출
                         const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}&mode=planning`);
                         if (response.ok) {
                             const json = await response.json();
@@ -450,28 +449,31 @@
                     const rawRecs = aiResponse.recommendedTitles || [];
                     const normalizedRecs = rawRecs.map(r => ({
                         rawTitle: typeof r === 'string' ? r : r.title,
-                        cleanTitle: String(typeof r === 'string' ? r : r.title).replace(/\s/g, '').toLowerCase(),
+                        // AI 제목도 괄호 제거 후 정규화
+                        cleanTitle: String(typeof r === 'string' ? r : r.title).replace(/\(.*\)|\[.*\]/g, '').replace(/\s/g, '').toLowerCase(),
                         reason: r.reason || "AI 추천",
                         targetType: r.type ? r.type.toLowerCase() : (targetQuery.includes("정주행") || targetQuery.includes("드라마") ? "drama" : ""), 
                         keywords: r.keywords || []
                     }));
                     
-                    // --- [Updated Logic: 오매핑 방지 로직 적용] ---
+                    // --- [Final Logic: 괄호 제거 & 지상파 추가] ---
                     const candidates = dbData.map(item => {
-                        const myTitle = (item.title || "").replace(/\s/g, '').toLowerCase();
+                        // 1. 제목 전처리: 괄호(...) 및 대괄호[...] 내용을 제거하고 비교
+                        // 예: "연인(MBC)" -> "연인" (이제 AI '연인'과 길이/내용이 완벽 일치)
+                        const rawTitle = item.title || "";
+                        const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
+                        const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
                         
-                        // 카테고리/서브카테고리 정규화
                         const myCategory = (item.category || "").toLowerCase(); 
                         const mySubCategory = (item.subCategory || "").toLowerCase();
                         
-                        // [핵심 로직] 카테고리 우선순위 판단 (Hierarchy Check)
-                        // 1. '영화' 혹은 'movie'가 포함되면 무조건 영화로 못 박음.
+                        // 2. 카테고리 로직 보강: '지상파', '종편' 추가
                         const isDbMovie = myCategory.includes("영화") || myCategory.includes("movie") || 
                                           mySubCategory.includes("영화") || mySubCategory.includes("movie");
 
-                        // 2. 영화가 아니면서, 드라마/시리즈/예능/TV 키워드가 있으면 시리즈물로 판단
                         const isDbSeries = !isDbMovie && (
                             myCategory.includes("드라마") || myCategory.includes("시리즈") || myCategory.includes("예능") || myCategory.includes("tv") ||
+                            myCategory.includes("지상파") || myCategory.includes("종편") || // <--- [추가됨]
                             mySubCategory.includes("드라마") || mySubCategory.includes("시리즈") || mySubCategory.includes("예능") || mySubCategory.includes("tv")
                         );
                     
@@ -480,33 +482,33 @@
                     
                         for (const rec of normalizedRecs) {
                             const recTitle = rec.cleanTitle;
+                            // 괄호 뗀 제목으로 유사도 계산
                             const sim = calculateSimilarity(myTitle, recTitle);
                             
-                            if (sim > 0.6) { // 유사도 60% 이상일 때만 평가
+                            if (sim > 0.6) { 
                                 let currentScore = sim * 100;
                                 
-                                // AI가 찾으려는 타입
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
                     
-                                // --- [강력한 타입 필터링] ---
+                                // 타입 필터링
                                 if (isRecSeries && isDbMovie) {
-                                    currentScore -= 2000; // 가차 없이 탈락
+                                    currentScore -= 2000; 
                                 } else if (isRecMovie && isDbSeries) {
-                                    currentScore -= 2000; // 가차 없이 탈락
+                                    currentScore -= 2000; 
                                 } else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) {
-                                    currentScore += 50; // 신뢰도 보너스
+                                    currentScore += 50; 
                                 }
 
-                                // --- [추가 필터] WATAOJI 같은 꼬리표 방지 ---
+                                // 제목 정밀 검사 (괄호 뗀 제목 기준)
                                 if (myTitle === recTitle) {
-                                    currentScore += 500; // 정확히 일치 (최고존엄)
+                                    // "연인" === "연인" -> +500점 (이제 연인(MBC)도 여기 걸림)
+                                    currentScore += 500; 
                                 } else if (myTitle.length > recTitle.length + 3) {
-                                    // 제목이 AI 요청보다 3글자 이상 길면(부제, 시즌명 등) 점수 깎기
+                                    // "치유계연인" vs "연인" -> 길이 차이로 감점
                                     currentScore -= 200;
                                 }
                                 
-                                // 점수 갱신
                                 if (currentScore > score) {
                                     score = currentScore;
                                     aiReason = rec.reason;
@@ -514,8 +516,8 @@
                             }
                         }
                     
-                        // [보너스 로직] (이미 탈락한 애들은 제외)
-                        if (score > 0 && myTitle.includes(targetQuery.replace(/\s/g, ''))) {
+                        // 검색어 보너스 (괄호 포함된 원본 제목으로도 체크)
+                        if (score > 0 && (myTitle.includes(targetQuery.replace(/\s/g, '')) || rawTitle.includes(targetQuery))) {
                             score += 30;
                         }
                     
@@ -529,7 +531,7 @@
                             endDate: defaultEnd
                         };
                     })
-                    .filter(item => item.score > 40) // 필터링
+                    .filter(item => item.score > 40)
                     .sort((a, b) => b.score - a.score);
                     // --- [Logic End] ---
 
