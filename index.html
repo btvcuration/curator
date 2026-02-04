@@ -433,6 +433,7 @@
                     let aiResponse = { recommendedTitles: [], strategy: "", blockTitle: "" };
 
                     try {
+                        // GAS API 호출
                         const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}&mode=planning`);
                         if (response.ok) {
                             const json = await response.json();
@@ -455,11 +456,11 @@
                         keywords: r.keywords || []
                     }));
                     
-                    // --- [Updated Logic Start] ---
+                    // --- [Updated Logic: 오매핑 방지 로직 적용] ---
                     const candidates = dbData.map(item => {
                         const myTitle = (item.title || "").replace(/\s/g, '').toLowerCase();
                         
-                        // 카테고리/서브카테고리 정규화 (핵심!)
+                        // 카테고리/서브카테고리 정규화
                         const myCategory = (item.category || "").toLowerCase(); 
                         const mySubCategory = (item.subCategory || "").toLowerCase();
                         
@@ -530,7 +531,7 @@
                     })
                     .filter(item => item.score > 40) // 필터링
                     .sort((a, b) => b.score - a.score);
-                    // --- [Updated Logic End] ---
+                    // --- [Logic End] ---
 
                     const uniqueMap = new Map();
                     candidates.forEach(item => {
@@ -551,7 +552,6 @@
                     setIsSearching(false);
                 }
             };
-
             const applyFilters = (sourceData = originalResults) => {
                 let filtered = sourceData.filter(item => {
                     if (!includeRestricted && ['성인', '기타', 'adult', 'etc'].includes(item.category)) return false;
