@@ -532,33 +532,63 @@
                         rawTitle: typeof r === 'string' ? r : r.title,
                         cleanTitle: String(typeof r === 'string' ? r : r.title).replace(/\s/g, '').toLowerCase(),
                         reason: r.reason || "AI 추천",
-                        type: r.type || "",
+                        // AI가 type을 주면 쓰고, 없으면 쿼리 문맥으로 추측 (정주행 -> 드라마)
+                        targetType: r.type ? r.type.toLowerCase() : (targetQuery.includes("정주행") || targetQuery.includes("드라마") ? "drama" : ""), 
                         keywords: r.keywords || []
                     }));
-
+                    
                     const candidates = dbData.map(item => {
+                        // DB 데이터 전처리
                         const myTitle = (item.title || "").replace(/\s/g, '').toLowerCase();
+                        const myCategory = (item.category || "").toLowerCase(); // 영화, 드라마, 예능 등
+                        
                         let score = 0;
                         let aiReason = "";
-                        
-                        let maxSim = 0;
+                        let matchType = "none"; // 디버깅용
+                    
+                        // AI 추천 리스트와 비교
                         for (const rec of normalizedRecs) {
                             const sim = calculateSimilarity(myTitle, rec.cleanTitle);
-                            if (sim > maxSim) {
-                                maxSim = sim;
-                                aiReason = rec.reason;
+                            
+                            if (sim > 0.6) { // 유사도가 어느정도 있을 때
+                                let currentScore = sim * 100;
+                    
+                                // [핵심] 오매핑 방지 로직: 카테고리 검증
+                                // rec.targetType이 존재하고(AI가 줬거나 우리가 추측했거나),
+                                // DB의 category와 서로 상충될 때 점수 대폭 삭감
+                                
+                                const isRecDrama = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("드라마");
+                                const isMyDrama = myCategory.includes("드라마") || myCategory.includes("시리즈");
+                                
+                                const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film") || rec.targetType.includes("영화");
+                                const isMyMovie = myCategory.includes("영화");
+                    
+                                // Case 1: AI는 드라마를 원하는데 DB는 영화인 경우 (나의 아저씨 해외영화 케이스)
+                                if (isRecDrama && !isMyDrama) {
+                                    currentScore -= 50; // 강력한 페널티
+                                }
+                                // Case 2: AI는 영화를 원하는데 DB는 드라마인 경우
+                                else if (isRecMovie && !isMyMovie) {
+                                    currentScore -= 50;
+                                }
+                                // Case 3: 타입이 정확히 일치하는 경우 가산점
+                                else if ((isRecDrama && isMyDrama) || (isRecMovie && isMyMovie)) {
+                                    currentScore += 20; 
+                                }
+                    
+                                if (currentScore > score) {
+                                    score = currentScore;
+                                    aiReason = rec.reason;
+                                }
                             }
                         }
-                        
+                    
+                        // 검색어 직접 포함 여부 (기존 로직 유지)
                         if (myTitle.includes(targetQuery.replace(/\s/g, ''))) {
-                            score += 50; 
+                            score += 30; 
                         }
-
-                        if (maxSim > 0.6) {
-                            score += maxSim * 100;
-                        }
-
-                        // 날짜 기본값 주입
+                    
+                        // 날짜 기본값 주입 및 반환
                         return { 
                             ...item, 
                             score, 
@@ -569,7 +599,7 @@
                             endDate: defaultEnd
                         };
                     })
-                    .filter(item => item.score > 30) 
+                    .filter(item => item.score > 40) // 커트라인을 조금 높임 (오매핑 제거를 위해)
                     .sort((a, b) => b.score - a.score);
 
                     const uniqueMap = new Map();
@@ -965,7 +995,10 @@
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                                                        {/* 기존 코드의 카테고리 뱃지 부분 수정 */}
                                                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
+                                                            {/* 카테고리 앞에 아이콘 추가로 시인성 확보 */}
+                                                            {item.subCategory.includes('영화') ? '🎬 ' : item.subCategory.includes('드라마') ? '📺 ' : ''}
                                                             {item.subCategory}
                                                         </span>
                                                         {item.aiReason && (
