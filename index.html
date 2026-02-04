@@ -456,17 +456,17 @@
                         keywords: r.keywords || []
                     }));
                     
-                    // --- [Logic 1: 오매핑 방지 및 점수 계산] ---
+                   // --- [Logic 1: 오매핑 방지 및 점수 계산] ---
                     const candidates = dbData.map(item => {
                         const rawTitle = item.title || "";
-                        // 1. 제목 전처리: 괄호(...) 및 대괄호[...] 내용을 제거하고 비교
+                        // 1. 제목 전처리
                         const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
                         const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
                         
                         const myCategory = (item.category || "").toLowerCase(); 
                         const mySubCategory = (item.subCategory || "").toLowerCase();
                         
-                        // 2. 카테고리 로직: '영화' vs '시리즈(지상파/종편 포함)'
+                        // 2. 카테고리 로직
                         const isDbMovie = myCategory.includes("영화") || myCategory.includes("movie") || 
                                           mySubCategory.includes("영화") || mySubCategory.includes("movie");
 
@@ -489,7 +489,7 @@
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
                     
-                                // 타입 불일치 시 강력 페널티
+                                // [필터 1] 타입 불일치 강력 페널티
                                 if (isRecSeries && isDbMovie) {
                                     currentScore -= 2000; 
                                 } else if (isRecMovie && isDbSeries) {
@@ -498,11 +498,22 @@
                                     currentScore += 50; 
                                 }
 
-                                // 제목 정밀 검사 (괄호 뗀 제목 기준)
+                                // [필터 2] 제목 정밀 검사 (여기가 핵심!)
+                                const lenDiff = Math.abs(myTitle.length - recTitle.length); // 길이 차이 절댓값
+                                
                                 if (myTitle === recTitle) {
-                                    currentScore += 500; // 정확히 일치
-                                } else if (myTitle.length > recTitle.length + 3) {
-                                    currentScore -= 200; // 길이 차이 감점
+                                    currentScore += 500; // 정확히 일치 (최고존엄)
+                                } else if (lenDiff > 2) {
+                                    // [수정됨] 제목 길이가 2글자보다 더 많이 차이나면 무조건 감점
+                                    // 예: "폴라익스프레스"(7) vs "프레스"(3) -> 차이 4 -> 감점
+                                    // 예: "나의아저씨"(5) vs "나의아저씨WATAOJI"(12) -> 차이 7 -> 감점
+                                    currentScore -= 200; 
+                                }
+
+                                // [필터 3] 1글자 제목 방어 (New!)
+                                // 예: '손', '위', '고', '오' 등 무의미한 단어 매칭 방지
+                                if (myTitle.length === 1 && myTitle !== recTitle) {
+                                    currentScore -= 500; // 확인 사살
                                 }
                                 
                                 if (currentScore > score) {
