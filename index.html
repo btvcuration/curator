@@ -456,24 +456,23 @@
                         keywords: r.keywords || []
                     }));
                     
-                    // --- [Final Logic: 괄호 제거 & 지상파 추가] ---
+                    // --- [Logic 1: 오매핑 방지 및 점수 계산] ---
                     const candidates = dbData.map(item => {
-                        // 1. 제목 전처리: 괄호(...) 및 대괄호[...] 내용을 제거하고 비교
-                        // 예: "연인(MBC)" -> "연인" (이제 AI '연인'과 길이/내용이 완벽 일치)
                         const rawTitle = item.title || "";
+                        // 1. 제목 전처리: 괄호(...) 및 대괄호[...] 내용을 제거하고 비교
                         const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
                         const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
                         
                         const myCategory = (item.category || "").toLowerCase(); 
                         const mySubCategory = (item.subCategory || "").toLowerCase();
                         
-                        // 2. 카테고리 로직 보강: '지상파', '종편' 추가
+                        // 2. 카테고리 로직: '영화' vs '시리즈(지상파/종편 포함)'
                         const isDbMovie = myCategory.includes("영화") || myCategory.includes("movie") || 
                                           mySubCategory.includes("영화") || mySubCategory.includes("movie");
 
                         const isDbSeries = !isDbMovie && (
                             myCategory.includes("드라마") || myCategory.includes("시리즈") || myCategory.includes("예능") || myCategory.includes("tv") ||
-                            myCategory.includes("지상파") || myCategory.includes("종편") || // <--- [추가됨]
+                            myCategory.includes("지상파") || myCategory.includes("종편") || 
                             mySubCategory.includes("드라마") || mySubCategory.includes("시리즈") || mySubCategory.includes("예능") || mySubCategory.includes("tv")
                         );
                     
@@ -482,7 +481,6 @@
                     
                         for (const rec of normalizedRecs) {
                             const recTitle = rec.cleanTitle;
-                            // 괄호 뗀 제목으로 유사도 계산
                             const sim = calculateSimilarity(myTitle, recTitle);
                             
                             if (sim > 0.6) { 
@@ -491,7 +489,7 @@
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
                     
-                                // 타입 필터링
+                                // 타입 불일치 시 강력 페널티
                                 if (isRecSeries && isDbMovie) {
                                     currentScore -= 2000; 
                                 } else if (isRecMovie && isDbSeries) {
@@ -502,11 +500,9 @@
 
                                 // 제목 정밀 검사 (괄호 뗀 제목 기준)
                                 if (myTitle === recTitle) {
-                                    // "연인" === "연인" -> +500점 (이제 연인(MBC)도 여기 걸림)
-                                    currentScore += 500; 
+                                    currentScore += 500; // 정확히 일치
                                 } else if (myTitle.length > recTitle.length + 3) {
-                                    // "치유계연인" vs "연인" -> 길이 차이로 감점
-                                    currentScore -= 200;
+                                    currentScore -= 200; // 길이 차이 감점
                                 }
                                 
                                 if (currentScore > score) {
@@ -516,7 +512,7 @@
                             }
                         }
                     
-                        // 검색어 보너스 (괄호 포함된 원본 제목으로도 체크)
+                        // 검색어 보너스
                         if (score > 0 && (myTitle.includes(targetQuery.replace(/\s/g, '')) || rawTitle.includes(targetQuery))) {
                             score += 30;
                         }
@@ -533,33 +529,27 @@
                     })
                     .filter(item => item.score > 40)
                     .sort((a, b) => b.score - a.score);
-                    // --- [Logic End] ---
                     
+                    // --- [Logic 2: 중복 제거 (제목 기준)] ---
                     const uniqueTitleMap = new Map();
                     
                     candidates.forEach(item => {
-                        // 1. 중복 제거용 키 생성 (괄호 및 공백 제거)
-                        // 예: "기생충[흑백판]" -> "기생충", "기생충 (2019)" -> "기생충"
+                        // 중복 제거용 키: 괄호와 공백을 모두 제거한 순수 제목
+                        // 예: "8월의 크리스마스[UHD]" -> "8월의크리스마스"
                         const dedupKey = item.title.replace(/\[.*?\]|\(.*?\)/g, "").replace(/\s/g, "").toLowerCase();
 
                         if (!uniqueTitleMap.has(dedupKey)) {
                             uniqueTitleMap.set(dedupKey, item);
                         } else {
-                            // 이미 같은 작품이 있다면, '본편'에 가까운(제목이 더 짧은) 녀석을 우선 선택
-                            // 예: '기생충' vs '기생충[가치봄]' -> '기생충' 선택
+                            // 이미 있는 경우, 제목 길이가 더 짧은(순정) 버전을 우선시
                             const existing = uniqueTitleMap.get(dedupKey);
                             if (item.title.length < existing.title.length) {
                                 uniqueTitleMap.set(dedupKey, item);
                             }
                         }
                     });
-
-                    const uniqueMap = new Map();
-                    candidates.forEach(item => {
-                        if (!uniqueMap.has(item.id)) uniqueMap.set(item.id, item);
-                    });
                     
-                    const finalCandidates = Array.from(uniqueMap.values()).slice(0, 50); 
+                    const finalCandidates = Array.from(uniqueTitleMap.values()).slice(0, 50); 
 
                     setOriginalResults(finalCandidates);
                     applyFilters(finalCandidates);
