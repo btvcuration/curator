@@ -538,44 +538,54 @@
                     }));
                     
                     const candidates = dbData.map(item => {
-                        // DB 데이터 전처리
                         const myTitle = (item.title || "").replace(/\s/g, '').toLowerCase();
-                        const myCategory = (item.category || "").toLowerCase(); // 영화, 드라마, 예능 등
                         
+                        // DB 데이터의 카테고리/서브카테고리 정규화
+                        const myCategory = (item.category || "").toLowerCase(); 
+                        const mySubCategory = (item.subCategory || "").toLowerCase();
+                        
+                        // [핵심 로직] 카테고리 우선순위 판단 (Hierarchy Check)
+                        // 1. '영화' 혹은 'movie'가 포함되면 무조건 영화로 못 박음. (서브에 드라마가 있든 말든 무시)
+                        const isDbMovie = myCategory.includes("영화") || myCategory.includes("movie") || 
+                                          mySubCategory.includes("영화") || mySubCategory.includes("movie");
+                    
+                        // 2. 영화가 아니면서, 드라마/시리즈/예능/TV 키워드가 있으면 시리즈물로 판단
+                        const isDbSeries = !isDbMovie && (
+                            myCategory.includes("드라마") || myCategory.includes("시리즈") || myCategory.includes("예능") || myCategory.includes("tv") ||
+                            mySubCategory.includes("드라마") || mySubCategory.includes("시리즈") || mySubCategory.includes("예능") || mySubCategory.includes("tv")
+                        );
+                    
                         let score = 0;
                         let aiReason = "";
-                        let matchType = "none"; // 디버깅용
                     
-                        // AI 추천 리스트와 비교
                         for (const rec of normalizedRecs) {
+                            // 제목 유사도 계산
                             const sim = calculateSimilarity(myTitle, rec.cleanTitle);
                             
-                            if (sim > 0.6) { // 유사도가 어느정도 있을 때
+                            if (sim > 0.6) { // 유사도 60% 이상일 때만 평가
                                 let currentScore = sim * 100;
-                    
-                                // [핵심] 오매핑 방지 로직: 카테고리 검증
-                                // rec.targetType이 존재하고(AI가 줬거나 우리가 추측했거나),
-                                // DB의 category와 서로 상충될 때 점수 대폭 삭감
                                 
-                                const isRecDrama = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("드라마");
-                                const isMyDrama = myCategory.includes("드라마") || myCategory.includes("시리즈");
+                                // AI가 찾으려는 타입 (GAS에서 받아온 값)
+                                // 쿼리에 '정주행'이 있거나 AI가 'drama'라고 했으면 시리즈
+                                const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
+                                const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
+                    
+                                // --- [강력한 타입 필터링] ---
                                 
-                                const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film") || rec.targetType.includes("영화");
-                                const isMyMovie = myCategory.includes("영화");
-                    
-                                // Case 1: AI는 드라마를 원하는데 DB는 영화인 경우 (나의 아저씨 해외영화 케이스)
-                                if (isRecDrama && !isMyDrama) {
-                                    currentScore -= 50; // 강력한 페널티
+                                // Case A: AI는 드라마(나의 아저씨)를 원하는데, DB 데이터는 '영화' 딱지가 붙어있음
+                                if (isRecSeries && isDbMovie) {
+                                    currentScore -= 2000; // 가차 없이 탈락 (점수 삭제)
                                 }
-                                // Case 2: AI는 영화를 원하는데 DB는 드라마인 경우
-                                else if (isRecMovie && !isMyMovie) {
-                                    currentScore -= 50;
+                                // Case B: AI는 영화를 원하는데, DB 데이터는 '시리즈'임
+                                else if (isRecMovie && isDbSeries) {
+                                    currentScore -= 2000; // 가차 없이 탈락
                                 }
-                                // Case 3: 타입이 정확히 일치하는 경우 가산점
-                                else if ((isRecDrama && isMyDrama) || (isRecMovie && isMyMovie)) {
-                                    currentScore += 20; 
+                                // Case C: 타입이 서로 일치함 (둘 다 영화 or 둘 다 시리즈)
+                                else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) {
+                                    currentScore += 50; // 신뢰도 보너스
                                 }
-                    
+                                
+                                // 점수 갱신
                                 if (currentScore > score) {
                                     score = currentScore;
                                     aiReason = rec.reason;
@@ -583,12 +593,12 @@
                             }
                         }
                     
-                        // 검색어 직접 포함 여부 (기존 로직 유지)
-                        if (myTitle.includes(targetQuery.replace(/\s/g, ''))) {
-                            score += 30; 
+                        // [보너스 로직]
+                        // 점수가 이미 마이너스(타입 불일치)가 아닌 경우에만 검색어 일치 보너스를 줌
+                        if (score > 0 && myTitle.includes(targetQuery.replace(/\s/g, ''))) {
+                            score += 30;
                         }
                     
-                        // 날짜 기본값 주입 및 반환
                         return { 
                             ...item, 
                             score, 
@@ -599,7 +609,7 @@
                             endDate: defaultEnd
                         };
                     })
-                    .filter(item => item.score > 40) // 커트라인을 조금 높임 (오매핑 제거를 위해)
+                    .filter(item => item.score > 40) // -2000점 먹은 오매핑 데이터는 여기서 100% 걸러짐
                     .sort((a, b) => b.score - a.score);
 
                     const uniqueMap = new Map();
