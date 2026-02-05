@@ -277,6 +277,32 @@
         );
 
         const App = () => {
+            // [NEW] 트렌드 새로고침 로딩 상태
+            const [isTrendRefreshing, setIsTrendRefreshing] = useState(false);
+
+            // [NEW] 트렌드 새로고침 핸들러
+            const handleTrendRefresh = async () => {
+                if (isTrendRefreshing) return; // 중복 클릭 방지
+                setIsTrendRefreshing(true);
+                showToast("최신 트렌드를 분석 중입니다... (약 5초)");
+                
+                try {
+                    // 백엔드에 'refresh_picks' 모드로 요청
+                    const res = await fetch(`${GAS_API_URL}?mode=refresh_picks`);
+                    const json = await res.json();
+                    
+                    if (json.status === 'success') {
+                        setTodaysPicks(json.todaysPicks); // 추천 멘트 업데이트
+                        setContext(prev => ({ ...prev, ...json.context })); // 날씨/태그 업데이트
+                        showToast("🔥 트렌드 픽이 업데이트되었습니다!");
+                    }
+                } catch (e) {
+                    console.error(e);
+                    showToast("업데이트 실패");
+                } finally {
+                    setIsTrendRefreshing(false);
+                }
+            };
             const [query, setQuery] = useState("");
             const [viewState, setViewState] = useState("idle");
             const [dbData, setDbData] = useState([]); 
@@ -802,20 +828,33 @@
                                 />
                                 <div className="space-y-4 mt-2">
                                     <div className="flex justify-between items-center px-1">
-                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today's Season Pick</p>
-                                        <span className="text-[10px] text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100">
-                                            {getSeasonalKeywords().season} 추천
+                                        <div className="flex items-center gap-2">
+                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today's Trend Pick</p>
+                                            
+                                            {/* [NEW] 새로고침 버튼 */}
+                                            <button 
+                                                onClick={handleTrendRefresh} 
+                                                disabled={isTrendRefreshing}
+                                                className="text-gray-300 hover:text-blue-600 transition-colors p-1 rounded-full hover:bg-blue-50"
+                                                title="최신 트렌드로 다시 추천받기"
+                                            >
+                                                {/* 로딩 중이면 뱅글뱅글 돔 */}
+                                                <RotateCcw size={12} className={isTrendRefreshing ? "animate-spin" : ""} />
+                                            </button>
+                                        </div>
+                                        
+                                        <span className="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 flex items-center gap-1">
+                                            <Sparkles size={10} />
+                                            실시간 이슈 반영
                                         </span>
                                     </div>
-                                    <div className="grid grid-cols-1 gap-3">
+                                    
+                                    {/* 멘트 리스트 (로딩 중이면 흐리게 처리) */}
+                                    <div className={`grid grid-cols-1 gap-3 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                                         {todaysPicks.map((sent, i) => (
-                                            <button
-                                                key={i}
-                                                onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())}
-                                                className={`p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all w-full border flex items-center gap-3 bg-white border-gray-100 hover:border-blue-200 group`}
-                                            >
+                                            <button key={i} onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} className="p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all w-full border flex items-center gap-3 bg-white border-gray-100 hover:border-blue-200 group">
                                                 <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-lg group-hover:bg-blue-100 transition-colors">
-                                                     {getRandomEmoji(i)}
+                                                    {getRandomEmoji(i)}
                                                 </div>
                                                 <span className="text-gray-700 group-hover:text-blue-700 transition-colors">{sent}</span>
                                             </button>
