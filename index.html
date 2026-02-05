@@ -326,7 +326,7 @@
             const [bulkStartDate, setBulkStartDate] = useState("");
             const [bulkEndDate, setBulkEndDate] = useState("");
 
-            const [context, setContext] = useState({ weather: "", temp: "", trends: [] }); 
+            const [context, setContext] = useState({ weather: "날씨 확인 중", temp: "--", trends: [] });
             const [todaysPicks, setTodaysPicks] = useState([]);
             const [lastUpdated, setLastUpdated] = useState(null);
 
@@ -819,44 +819,45 @@
                     <main className="p-5 pb-32 min-h-[80vh]">
                         {viewState === "idle" && (
                             <div className="flex flex-col gap-6 mt-4 animate-fade-in max-w-3xl mx-auto">
-                                <SearchBar 
-                                    query={query} 
-                                    setQuery={setQuery} 
-                                    handleSearch={handleSearch} 
-                                    setShowFilters={setShowFilters}
-                                    hasFilters={hasActiveFilters}
-                                />
-                                <div className="space-y-4 mt-2">
-                                    <div className="flex justify-between items-center px-1">
-                                        <div className="flex items-center gap-2">
-                                            <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today's Trend Pick</p>
+                                <SearchBar query={query} setQuery={setQuery} handleSearch={handleSearch} setShowFilters={setShowFilters} hasFilters={hasActiveFilters} />
+                                <div className="space-y-4 mt-4">
+                                    <div className="flex justify-between items-end px-1 border-b border-gray-100 pb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
+                                                        <Sparkles size={12} className="text-indigo-600" />
+                                                        실시간 트렌드 반영
+                                                    </span>
+                                                </div>
+                                                <h3 className="text-lg font-extrabold text-gray-800 tracking-tight">Today's Trend Pick</h3>
+                                            </div>
                                             
-                                            {/* [NEW] 새로고침 버튼 */}
+                                            {/* [수정] 새로고침 버튼 대폭 확대 */}
                                             <button 
                                                 onClick={handleTrendRefresh} 
                                                 disabled={isTrendRefreshing}
-                                                className="text-gray-300 hover:text-blue-600 transition-colors p-1 rounded-full hover:bg-blue-50"
+                                                className="group p-2 bg-white border border-gray-200 rounded-full hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm active:scale-95 ml-1"
                                                 title="최신 트렌드로 다시 추천받기"
                                             >
-                                                {/* 로딩 중이면 뱅글뱅글 돔 */}
-                                                <RotateCcw size={12} className={isTrendRefreshing ? "animate-spin" : ""} />
+                                                <RotateCcw size={18} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
                                             </button>
                                         </div>
-                                        
-                                        <span className="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 flex items-center gap-1">
-                                            <Sparkles size={10} />
-                                            실시간 이슈 반영
-                                        </span>
                                     </div>
                                     
-                                    {/* 멘트 리스트 (로딩 중이면 흐리게 처리) */}
+                                    {/* 추천 문구 리스트 */}
                                     <div className={`grid grid-cols-1 gap-3 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                                         {todaysPicks.map((sent, i) => (
-                                            <button key={i} onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} className="p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all w-full border flex items-center gap-3 bg-white border-gray-100 hover:border-blue-200 group">
-                                                <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-lg group-hover:bg-blue-100 transition-colors">
+                                            <button key={i} onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} className="p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all w-full border flex items-center gap-4 bg-white border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/30 group">
+                                                <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
                                                     {getRandomEmoji(i)}
                                                 </div>
-                                                <span className="text-gray-700 group-hover:text-blue-700 transition-colors">{sent}</span>
+                                                <div className="flex-1">
+                                                    <span className="text-gray-800 text-[15px] leading-snug group-hover:text-indigo-800 transition-colors block word-keep-all">
+                                                        {sent}
+                                                    </span>
+                                                </div>
+                                                <ArrowRight size={16} className="text-gray-300 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
                                             </button>
                                         ))}
                                     </div>
