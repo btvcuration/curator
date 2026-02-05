@@ -456,7 +456,7 @@
                         keywords: r.keywords || []
                     }));
                     
-                   // --- [Logic 1: 오매핑 방지 및 점수 계산] ---
+                   // --- [Updated Logic: 메타유형 우선 반영] ---
                     const candidates = dbData.map(item => {
                         const rawTitle = item.title || "";
                         // 1. 제목 전처리
@@ -465,12 +465,21 @@
                         
                         const myCategory = (item.category || "").toLowerCase(); 
                         const mySubCategory = (item.subCategory || "").toLowerCase();
+                        const myMetaType = (item.metaType || "").toLowerCase(); // [NEW] 메타유형 사용
+
+                        // [NEW] 키즈/유아 판단 (메타유형 포함해서 더 강력하게 체크)
+                        const isKids = myMetaType.includes("키즈") || myMetaType.includes("애니") ||
+                                       myCategory.includes("키즈") || mySubCategory.includes("키즈") || 
+                                       myCategory.includes("유아") || mySubCategory.includes("뽀로로") || 
+                                       mySubCategory.includes("타요") || mySubCategory.includes("핑크퐁");
                         
-                        // 2. 카테고리 로직
-                        const isDbMovie = myCategory.includes("영화") || myCategory.includes("movie") || 
+                        // [NEW] 카테고리 로직 (메타유형 최우선)
+                        const isDbMovie = myMetaType.includes("영화") || 
+                                          myCategory.includes("영화") || myCategory.includes("movie") || 
                                           mySubCategory.includes("영화") || mySubCategory.includes("movie");
 
                         const isDbSeries = !isDbMovie && (
+                            myMetaType.includes("시리즈") || myMetaType.includes("드라마") || myMetaType.includes("방송") ||
                             myCategory.includes("드라마") || myCategory.includes("시리즈") || myCategory.includes("예능") || myCategory.includes("tv") ||
                             myCategory.includes("지상파") || myCategory.includes("종편") || 
                             mySubCategory.includes("드라마") || mySubCategory.includes("시리즈") || mySubCategory.includes("예능") || mySubCategory.includes("tv")
@@ -478,7 +487,7 @@
                     
                         let score = 0;
                         let aiReason = "";
-                        let aiTargetTitle = ""; // [NEW] AI가 의도한 원제 저장용 변수
+                        let aiTargetTitle = ""; 
                     
                         for (const rec of normalizedRecs) {
                             const recTitle = rec.cleanTitle;
@@ -490,36 +499,25 @@
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
                     
-                                // [필터 1] 타입 불일치 강력 페널티
-                                if (isRecSeries && isDbMovie) {
-                                    currentScore -= 2000; 
-                                } else if (isRecMovie && isDbSeries) {
-                                    currentScore -= 2000; 
-                                } else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) {
-                                    currentScore += 50; 
-                                }
+                                // [필터 1] 키즈 감점 (-3000)
+                                if (isKids) currentScore -= 3000; 
 
-                                // [필터 2] 제목 정밀 검사 (여기가 핵심!)
-                                const lenDiff = Math.abs(myTitle.length - recTitle.length); // 길이 차이 절댓값
-                                
+                                // [필터 2] 타입 불일치 (-2000)
+                                if (isRecSeries && isDbMovie) currentScore -= 2000; 
+                                else if (isRecMovie && isDbSeries) currentScore -= 2000; 
+                                else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) currentScore += 50; 
+
+                                // [필터 3] 제목 길이
                                 if (myTitle === recTitle) {
-                                    currentScore += 500; // 정확히 일치 (최고존엄)
-                                } else if (lenDiff > 2) {
-                                    // [수정됨] 제목 길이가 2글자보다 더 많이 차이나면 무조건 감점
-                                    // 예: "폴라익스프레스"(7) vs "프레스"(3) -> 차이 4 -> 감점
-                                    // 예: "나의아저씨"(5) vs "나의아저씨WATAOJI"(12) -> 차이 7 -> 감점
+                                    currentScore += 500; 
+                                } else if (myTitle.length > recTitle.length + 3) {
                                     currentScore -= 200; 
-                                }
-
-                                // [필터 3] 1글자 제목 방어 (New!)
-                                // 예: '손', '위', '고', '오' 등 무의미한 단어 매칭 방지
-                                if (myTitle.length === 1 && myTitle !== recTitle) {
-                                    currentScore -= 500; // 확인 사살
                                 }
                                 
                                 if (currentScore > score) {
                                     score = currentScore;
                                     aiReason = rec.reason;
+                                    aiTargetTitle = rec.rawTitle; 
                                 }
                             }
                         }
@@ -533,14 +531,14 @@
                             ...item, 
                             score, 
                             aiReason, 
-                            aiTargetTitle, // [NEW] 결과 객체에 포함
+                            aiTargetTitle,
                             prices: [item.price], 
                             minPrice: item.price,
                             startDate: defaultStart,
                             endDate: defaultEnd
                         };
                     })
-                    .filter(item => item.score > 50)
+                    .filter(item => item.score > 40)
                     .sort((a, b) => b.score - a.score);
                     
                     // --- [Logic 2: 중복 제거 (제목 기준)] ---
@@ -936,13 +934,17 @@
         
                                                     {/* 카테고리 뱃지 */}
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
+                                                        {/* [NEW] 메타유형 뱃지 표시 */}
+                                                        {item.metaType && (
+                                                            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded font-bold">
+                                                                {item.metaType}
+                                                            </span>
+                                                        )}
                                                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
                                                             {item.subCategory.includes('영화') ? '🎬 ' : item.subCategory.includes('드라마') ? '📺 ' : ''}
                                                             {item.subCategory}
                                                         </span>
-                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">
-                                                            {item.category}
-                                                        </span>
+                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category}</span>
                                                     </div>
                                                     
                                                     {/* AI 추천 사유 */}
