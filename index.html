@@ -356,62 +356,60 @@
                 const initApp = async () => {
                     setIsLoadingData(true);
                     
+                    // 1. 화면용 날씨 (빠른 표시)
                     const weatherData = await fetchRealWeather();
-                    const seasonalInfo = getSeasonalKeywords(); 
+                    setContext(prev => ({ ...prev, weather: weatherData.weather, temp: weatherData.temp }));
                     
-                    setContext({
-                        weather: weatherData.weather,
-                        temp: weatherData.temp,
-                        trends: seasonalInfo.keywords
-                    });
-                    
-                    setTodaysPicks(seasonalInfo.sentences);
+                    // [핵심] 2. 서버에 저장된 '글로벌 트렌드 픽' 가져오기 (비동기)
+                    // 이 호출은 DB 캐시 여부와 상관없이 무조건 실행되어야 3시간 주기를 맞출 수 있음
+                    fetch(`${GAS_API_URL}?mode=trends`) 
+                        .then(res => res.json())
+                        .then(json => {
+                            if (json.status === 'success') {
+                                console.log("📅 서버 트렌드 동기화 완료");
+                                setTodaysPicks(json.todaysPicks);
+                                // 서버 Context가 더 정확하므로 덮어씌우되, 날씨는 실측치 유지 노력
+                                setContext(prev => ({ 
+                                    ...prev, 
+                                    trends: json.context.trends,
+                                    timeContext: json.context.timeContext // 시간대 문구 등
+                                }));
+                            }
+                        })
+                        .catch(e => console.warn("트렌드 동기화 실패:", e));
 
+                    // 3. 무거운 영화 DB 데이터 로드 (여기는 로컬 캐시 적극 활용)
                     try {
                         const cached = await loadFromIndexedDB();
                         let loadedData = null;
-                        let loadedTime = null;
 
-                        if (cached) {
-                            const now = new Date().getTime();
-                            if (now - cached.timestamp < CACHE_EXPIRY_MS) {
-                                loadedData = cached.data;
-                                loadedTime = new Date(cached.timestamp);
-                                console.log("Using IndexedDB cached data");
-                            }
+                        // 로컬 캐시 유효하면 서버 요청 안 함 (영화 리스트는 잘 안 변하니까)
+                        if (cached && (new Date().getTime() - cached.timestamp < CACHE_EXPIRY_MS)) {
+                            loadedData = cached.data;
+                            console.log("✅ 로컬 영화 DB 사용");
                         }
 
                         if (!loadedData) {
-                            console.log("Fetching fresh DB data");
-                            const response = await fetch(GAS_API_URL); 
-                            const json = await response.json();
+                            console.log("⬇️ 영화 DB 다운로드");
+                            const res = await fetch(GAS_API_URL); // mode 파라미터 없으면 전체 로드
+                            const json = await res.json();
+                            
                             if (json.status === 'success' && json.data) {
                                 loadedData = json.data;
-                                loadedTime = new Date();
                                 await saveToIndexedDB(loadedData);
-                            } else {
-                                throw new Error("Invalid API Data");
                             }
                         }
 
-                        if (loadedData) {
-                            setDbData(loadedData);
-                            setLastUpdated(loadedTime);
-                            showToast(`데이터 로드 완료 (${loadedData.length.toLocaleString()}건)`);
-                        }
+                        if (loadedData) setDbData(loadedData);
 
                     } catch (error) {
-                        console.error("Data Load Failed:", error);
-                        showToast("데이터 로드 실패 (오프라인 모드)");
-                        setDbData([
-                            { id: "CS_MOCK_01", title: "캐시 로드 실패 예시1", category: "영화", subCategory: "한국영화", price: 0 },
-                            { id: "CS_MOCK_02", title: "캐시 로드 실패 예시2", category: "드라마", subCategory: "해외시리즈", price: 1000 }
-                        ]);
+                        console.error("DB Load Error:", error);
+                        // 에러 시 더미 데이터라도
+                        setDbData([{id:"ERR", title:"데이터 로드 실패", category:"기타", subCategory:"기타", price:0}]);
                     } finally {
                         setIsLoadingData(false);
                     }
                 };
-
                 initApp();
             }, []);
 
@@ -740,7 +738,6 @@
             };
 
             // ---------------- UI RENDER ----------------
-
             if (isLoadingData) {
                 return (
                     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 text-center font-sans">
@@ -754,7 +751,7 @@
                             </h2>
                             <div className="flex items-center gap-2 text-xs font-bold text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
                                 <Database size={12} />
-                                <span>로컬 저장소 확인 및 데이터 동기화 중...</span>
+                                <span>데이터 동기화 및 트렌드 분석 중...</span>
                             </div>
                         </div>
                     </div>
@@ -762,102 +759,121 @@
             }
 
             return (
-                <div className="min-h-screen bg-gray-50 text-gray-800 font-sans max-w-5xl mx-auto shadow-2xl overflow-hidden relative border-x border-gray-100 transition-all duration-300">
+                // [수정 1] Full Width 적용 (max-w 제한 해제, 좌우 패딩 추가)
+                <div className="min-h-screen bg-gray-50 text-gray-800 font-sans w-full px-4 md:px-8 lg:px-12 py-4 overflow-x-hidden transition-all duration-300">
                     
                     {toastMessage && (
-                        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-5 py-3 rounded-full shadow-xl z-50 text-sm font-bold animate-fade-in flex items-center gap-2 whitespace-nowrap">
+                        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-50 text-sm font-bold animate-fade-in flex items-center gap-2 whitespace-nowrap">
                             <CheckCircle2 size={18} className="text-green-400" />
                             {toastMessage}
                         </div>
                     )}
 
-                    <header className="bg-white px-5 pt-6 pb-4 sticky top-0 z-20 border-b border-gray-100">
-                        <div className="flex justify-between items-center mb-4">
-                            <div className="flex items-center gap-2" onClick={() => { setViewState("idle"); setQuery(""); }}>
-                                <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white cursor-pointer shadow-blue-200 shadow-md">
-                                    <Sparkles size={18} fill="currentColor" />
+                    <header className="bg-white rounded-3xl px-6 py-5 mb-6 shadow-sm border border-gray-100">
+                        <div className="flex justify-between items-center mb-0">
+                            <div className="flex items-center gap-3" onClick={() => { setViewState("idle"); setQuery(""); }}>
+                                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white cursor-pointer shadow-blue-200 shadow-md hover:scale-105 transition-transform">
+                                    <Sparkles size={20} fill="currentColor" />
                                 </div>
-                                <h1 className="font-bold text-xl tracking-tight cursor-pointer">AI Curator</h1>
+                                <div>
+                                    <h1 className="font-bold text-2xl tracking-tight cursor-pointer leading-none">AI Curator</h1>
+                                    <span className="text-[11px] text-gray-400 font-medium ml-0.5">Smart Admin System</span>
+                                </div>
                             </div>
                             
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-3">
                                 {lastUpdated && (
-                                    <span className="text-[10px] text-gray-400 hidden sm:inline-block">
-                                        Update: {lastUpdated.toLocaleTimeString()}
+                                    <span className="text-xs text-gray-400 hidden sm:inline-block bg-gray-50 px-2 py-1 rounded">
+                                        Last Update: {lastUpdated.toLocaleTimeString()}
                                     </span>
                                 )}
-                                <button onClick={clearCache} className="text-[10px] bg-gray-100 px-2 py-1 rounded text-gray-500 hover:bg-gray-200">
-                                    캐시초기화
-                                </button>
-                                <div className="flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100 shadow-sm">
-                                    <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                                    <span className="text-[11px] font-bold text-green-800 tracking-tight flex items-center gap-1.5">
-                                        <FileSpreadsheet size={12} className="text-green-600"/>
-                                        {dbData.length.toLocaleString()}건
-                                    </span>
+                                <div className="flex items-center gap-2">
+                                    <button onClick={clearCache} className="text-xs bg-white border border-gray-200 px-3 py-1.5 rounded-lg text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors font-medium">
+                                        캐시초기화
+                                    </button>
+                                    <div className="hidden sm:flex items-center gap-1.5 bg-green-50 px-3 py-1.5 rounded-full border border-green-100">
+                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                        <span className="text-xs font-bold text-green-700 tracking-tight flex items-center gap-1">
+                                            <FileSpreadsheet size={12} className="text-green-600"/>
+                                            {dbData.length.toLocaleString()}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-bold whitespace-nowrap border border-blue-100">
+                        {/* [수정 2] 상단 태그 영역: 날씨만 남기고 나머지는 제거 (트렌드 픽과 중복 방지) */}
+                        <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-hide">
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 rounded-full text-xs font-bold whitespace-nowrap border border-sky-100">
                                 {getWeatherIcon(context.weather)} {context.temp} {context.weather}
                             </div>
-                            {context.trends && context.trends.map((tag, i) => (
-                                <button 
-                                    key={i} 
-                                    onClick={() => handleSearch(tag.replace("#", ""))}
-                                    className="px-3 py-1.5 bg-white text-gray-600 rounded-full text-xs font-medium whitespace-nowrap border border-gray-200 shadow-sm active:scale-95 transition-transform hover:bg-gray-50 flex items-center gap-1"
-                                >
-                                    <Hash size={10} className="text-gray-400"/>
-                                    {tag.replace("#", "")}
-                                </button>
-                            ))}
+                            {/* 기존 해시태그 루프 제거됨 */}
                         </div>
                     </header>
 
-                    <main className="p-5 pb-32 min-h-[80vh]">
+                    <main className="pb-32 min-h-[60vh]">
                         {viewState === "idle" && (
-                            <div className="flex flex-col gap-6 mt-4 animate-fade-in max-w-3xl mx-auto">
-                                <SearchBar query={query} setQuery={setQuery} handleSearch={handleSearch} setShowFilters={setShowFilters} hasFilters={hasActiveFilters} />
-                                <div className="space-y-4 mt-4">
-                                    <div className="flex justify-between items-end px-1 border-b border-gray-100 pb-3">
+                            <div className="flex flex-col gap-8 animate-fade-in w-full">
+                                {/* 검색창 크기 조절 (너무 넓어지지 않게 중앙 정렬 및 최대폭 설정) */}
+                                <div className="w-full max-w-4xl mx-auto">
+                                    <SearchBar 
+                                        query={query} 
+                                        setQuery={setQuery} 
+                                        handleSearch={handleSearch} 
+                                        setShowFilters={setShowFilters} 
+                                        hasFilters={hasActiveFilters} 
+                                    />
+                                </div>
+
+                                {/* [수정 3] Trend Pick 디자인 개선 */}
+                                <div className="w-full">
+                                    <div className="flex flex-col md:flex-row md:items-end justify-between px-1 border-b border-gray-200 pb-4 mb-5 gap-4">
+                                        {/* 왼쪽: 타이틀 + 새로고침 버튼 */}
                                         <div className="flex items-center gap-3">
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 flex items-center gap-1">
-                                                        <Sparkles size={12} className="text-indigo-600" />
-                                                        실시간 트렌드 반영
-                                                    </span>
-                                                </div>
-                                                <h3 className="text-lg font-extrabold text-gray-800 tracking-tight">Today's Trend Pick</h3>
-                                            </div>
-                                            
-                                            {/* [수정] 새로고침 버튼 대폭 확대 */}
+                                            <h3 className="text-xl font-extrabold text-gray-800 tracking-tight">Today's Trend Pick</h3>
                                             <button 
                                                 onClick={handleTrendRefresh} 
                                                 disabled={isTrendRefreshing}
-                                                className="group p-2 bg-white border border-gray-200 rounded-full hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm active:scale-95 ml-1"
+                                                className="group p-2 bg-white border border-gray-200 rounded-full hover:border-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm active:scale-95"
                                                 title="최신 트렌드로 다시 추천받기"
                                             >
-                                                <RotateCcw size={18} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
+                                                <RotateCcw size={16} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
                                             </button>
+                                        </div>
+
+                                        {/* 오른쪽: 플래그 (우측 정렬) */}
+                                        <div className="flex items-center">
+                                            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 flex items-center gap-1.5 shadow-sm">
+                                                <Sparkles size={12} className="text-indigo-600" />
+                                                실시간 트렌드 반영
+                                            </span>
                                         </div>
                                     </div>
                                     
-                                    {/* 추천 문구 리스트 */}
-                                    <div className={`grid grid-cols-1 gap-3 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                    {/* [수정 4] 반응형 그리드 적용: 모바일 1열, 태블릿 2열, PC 4열 */}
+                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                                         {todaysPicks.map((sent, i) => (
-                                            <button key={i} onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} className="p-4 rounded-xl text-left text-sm font-bold shadow-sm hover:shadow-md active:scale-95 transition-all w-full border flex items-center gap-4 bg-white border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/30 group">
-                                                <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
+                                            <button 
+                                                key={i} 
+                                                onClick={() => handleSearch(sent.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} 
+                                                className="p-5 rounded-2xl text-left shadow-sm hover:shadow-lg hover:-translate-y-1 active:scale-95 transition-all w-full border flex flex-col items-start gap-4 bg-white border-gray-100 hover:border-indigo-200 group h-full relative overflow-hidden"
+                                            >
+                                                {/* 배경 데코레이션 */}
+                                                <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-indigo-50 to-transparent rounded-bl-full opacity-50 group-hover:opacity-100 transition-opacity"></div>
+
+                                                <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl group-hover:bg-white group-hover:shadow-md transition-all border border-slate-100 z-10">
                                                     {getRandomEmoji(i)}
                                                 </div>
-                                                <div className="flex-1">
-                                                    <span className="text-gray-800 text-[15px] leading-snug group-hover:text-indigo-800 transition-colors block word-keep-all">
+                                                <div className="flex-1 z-10 w-full">
+                                                    <span className="text-gray-800 text-[15px] font-bold leading-snug group-hover:text-indigo-700 transition-colors block word-keep-all">
                                                         {sent}
                                                     </span>
                                                 </div>
-                                                <ArrowRight size={16} className="text-gray-300 group-hover:text-indigo-400 group-hover:translate-x-1 transition-all" />
+                                                <div className="w-full flex justify-end z-10">
+                                                    <div className="p-1.5 rounded-full bg-gray-50 group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-500 transition-colors">
+                                                        <ArrowRight size={16} />
+                                                    </div>
+                                                </div>
                                             </button>
                                         ))}
                                     </div>
@@ -866,28 +882,28 @@
                         )}
 
                         {viewState === "thinking" && (
-                            <div className="flex flex-col items-center justify-center h-64 mt-10 space-y-6 animate-pulse">
+                            <div className="flex flex-col items-center justify-center h-[50vh] space-y-8 animate-fade-in">
                                 <div className="relative">
-                                    <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 rounded-full animate-ping"></div>
-                                    <div className="w-20 h-20 bg-white rounded-2xl shadow-lg border border-blue-100 flex items-center justify-center relative z-10">
-                                        <Sparkles size={32} className="text-blue-600 animate-spin-slow" />
+                                    <div className="absolute inset-0 bg-blue-500 blur-2xl opacity-20 rounded-full animate-ping"></div>
+                                    <div className="w-24 h-24 bg-white rounded-3xl shadow-xl border border-blue-100 flex items-center justify-center relative z-10">
+                                        <Sparkles size={40} className="text-blue-600 animate-spin-slow" />
                                     </div>
                                 </div>
-                                <div className="text-center space-y-1">
-                                    <h3 className="text-lg font-bold text-gray-800">
-                                        큐레이션 생성 중...
+                                <div className="text-center space-y-2">
+                                    <h3 className="text-2xl font-bold text-gray-800">
+                                        AI 큐레이션 생성 중...
                                     </h3>
-                                    <p className="text-sm text-gray-500">
-                                        로컬 데이터베이스에서 최적의 콘텐츠를<br/>
-                                        매칭하고 있습니다.
+                                    <p className="text-gray-500">
+                                        최적의 콘텐츠를 매칭하고 있습니다.<br/>
+                                        잠시만 기다려주세요.
                                     </p>
                                 </div>
                             </div>
                         )}
 
                         {viewState === "result" && (
-                            <div className="space-y-6 animate-slide-up" ref={resultRef}>
-                                <div className="mb-6">
+                            <div className="space-y-6 animate-slide-up w-full max-w-[1600px] mx-auto" ref={resultRef}>
+                                <div className="mb-6 max-w-2xl">
                                     <SearchBar 
                                         query={query} 
                                         setQuery={setQuery} 
@@ -897,146 +913,137 @@
                                         hasFilters={hasActiveFilters}
                                     />
                                     {(hasActiveFilters) && (
-                                        <div className="mt-2 text-[10px] text-blue-600 font-bold flex gap-2 overflow-hidden whitespace-nowrap px-1">
-                                            <Filter size={10} className="mt-0.5"/>
+                                        <div className="mt-2 text-[11px] text-blue-600 font-bold flex gap-2 items-center px-1">
+                                            <Filter size={12}/>
                                             <span>필터 적용 중</span>
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
-                                    <Edit3 className="absolute top-5 right-5 text-white opacity-50" size={20} />
+                                <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-10 opacity-10 transform translate-x-10 -translate-y-10">
+                                        <Sparkles size={150} fill="currentColor" />
+                                    </div>
                                     <div className="relative z-10">
-                                        <div className="flex items-center gap-2 mb-3 text-purple-200 text-xs font-bold uppercase tracking-wider">
-                                            <Sparkles size={12} /> AI Curation Block
+                                        <div className="flex items-center gap-2 mb-3 text-violet-200 text-xs font-bold uppercase tracking-wider">
+                                            <Sparkles size={14} /> AI Curation Block
                                         </div>
-                                        <h3 className="text-2xl font-bold leading-snug pr-8 tracking-tight">
+                                        <h3 className="text-3xl font-extrabold leading-tight tracking-tight mb-2">
                                             {blockTitle}
                                         </h3>
-                                        <p className="text-xs text-purple-200 mt-3 opacity-80 flex items-center gap-1">
-                                            <Download size={10} /> 다운로드 시 설정된 편성 일시가 반영됩니다.
+                                        <p className="text-sm text-violet-200 opacity-90 flex items-center gap-1.5">
+                                            <Edit3 size={14} />
+                                            {strategy}
                                         </p>
                                     </div>
                                 </div>
 
-                                <div className="flex items-center justify-between px-1">
+                                <div className="flex items-center justify-between px-2">
                                     <div className="flex items-center gap-2">
-                                        <button onClick={toggleAllSelection} className="flex items-center gap-1 text-xs font-bold text-gray-500 bg-white border border-gray-200 px-2 py-1.5 rounded hover:bg-gray-50">
-                                            {selectedItems.size === results.length && results.length > 0 ? <CheckSquare size={14} className="text-blue-500"/> : <Square size={14}/>}
+                                        <button onClick={toggleAllSelection} className="flex items-center gap-1.5 text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors">
+                                            {selectedItems.size === results.length && results.length > 0 ? <CheckSquare size={16} className="text-blue-600"/> : <Square size={16}/>}
                                             전체 선택
                                         </button>
-                                        <button onClick={openBulkEditModal} className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-1.5 rounded hover:bg-blue-100 disabled:opacity-50" disabled={selectedItems.size === 0}>
-                                            <CalendarClock size={14}/>
+                                        <button onClick={openBulkEditModal} className="flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-3 py-2 rounded-lg hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors" disabled={selectedItems.size === 0}>
+                                            <CalendarClock size={16}/>
                                             일괄 일시 수정
                                         </button>
                                     </div>
-                                    <span className="text-[10px] text-gray-400">드래그하여 순서 변경</span>
+                                    <span className="text-[11px] text-gray-400 font-medium hidden sm:inline-block">드래그하여 순서 변경 가능</span>
                                 </div>
 
-                                <div className="space-y-3">
+                                {/* 검색 결과 리스트: Full Width에서는 Grid로 변환 */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
                                     {results.length > 0 ? results.map((item, idx) => (
                                         <div 
                                             key={item.id} 
-                                            className={`bg-white p-4 rounded-xl border shadow-sm flex flex-col gap-3 group transition-colors draggable-item ${selectedItems.has(item.id) ? 'border-blue-400 ring-1 ring-blue-400 bg-blue-50/10' : 'border-gray-100 hover:border-blue-200'}`}
+                                            className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col gap-3 group transition-all draggable-item relative ${selectedItems.has(item.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-gray-100 hover:border-blue-300 hover:shadow-md'}`}
                                             draggable
                                             onDragStart={(e) => onDragStart(e, idx)}
                                             onDragEnter={(e) => onDragEnter(e, idx)}
                                             onDragEnd={onDragEnd}
                                             onDragOver={onDragOver}
                                         >
-                                            <div className="flex items-start gap-3">
-                                                {/* 체크박스 & 드래그 핸들 */}
-                                                <div className="flex flex-col items-center gap-2 pt-1">
-                                                    <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing">
-                                                        <GripVertical size={18} />
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing p-1">
+                                                        <GripVertical size={20} />
                                                     </div>
-                                                    <button onClick={() => toggleSelection(item.id)} className="text-gray-400 hover:text-blue-500">
-                                                        {selectedItems.has(item.id) ? <CheckSquare size={18} className="text-blue-500"/> : <Square size={18}/>}
+                                                    <button onClick={() => toggleSelection(item.id)} className="text-gray-300 hover:text-blue-500 transition-colors">
+                                                        {selectedItems.has(item.id) ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
                                                     </button>
                                                 </div>
-        
-                                                <div className="flex-1 min-w-0">
-                                                    {/* [수정됨] 제목 및 ID, 그리고 가격 표시 */}
-                                                    <div className="flex justify-between items-start mb-1 gap-2">
-                                                        <div className="flex-1">
-                                                            <h5 className="font-bold text-gray-900 text-base break-keep leading-tight">
-                                                                {item.title}
-                                                            </h5>
-                                                            <span className="text-[10px] text-gray-400 font-mono mt-0.5 block">
-                                                                {item.id}
-                                                            </span>
-                                                        </div>
-                                                        {/* 가격 배지 추가 */}
-                                                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${item.price > 0 ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                            {item.price > 0 ? `₩${item.price.toLocaleString()}` : '무료'}
-                                                        </div>
-                                                    </div>
-        
-                                                    {/* 카테고리 뱃지 */}
-                                                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
-                                                        {/* [NEW] 메타유형 뱃지 표시 */}
-                                                        {item.metaType && (
-                                                            <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded font-bold">
-                                                                {item.metaType}
-                                                            </span>
-                                                        )}
-                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
-                                                            {item.subCategory.includes('영화') ? '🎬 ' : item.subCategory.includes('드라마') ? '📺 ' : ''}
-                                                            {item.subCategory}
-                                                        </span>
-                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category}</span>
-                                                    </div>
-                                                    
-                                                    {/* AI 추천 사유 */}
-                                                    {item.aiReason && (
-                                                        <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
-                                                            <p className="text-xs text-blue-700 font-medium line-clamp-3 leading-relaxed">
-                                                                {/* [NEW] AI가 의도한 제목을 앞에 표시 */}
-                                                                {item.aiTargetTitle && (
-                                                                    <span className="font-bold text-indigo-800 mr-1">
-                                                                        [{item.aiTargetTitle}]
-                                                                    </span>
-                                                                )}
-                                                                {item.aiReason}
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {/* 날짜 입력 컨트롤 */}
-                                                    <div className="flex flex-wrap items-center gap-2 text-xs bg-gray-50 p-2 rounded-lg">
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-gray-400 font-bold">시작</span>
-                                                            <input 
-                                                                type="datetime-local" 
-                                                                value={item.startDate}
-                                                                onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
-                                                                className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-32 text-gray-600 font-mono text-[11px]"
-                                                            />
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <span className="text-gray-400 font-bold">종료</span>
-                                                            <input 
-                                                                type="datetime-local" 
-                                                                value={item.endDate}
-                                                                onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
-                                                                className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-32 text-gray-600 font-mono text-[11px]"
-                                                            />
-                                                        </div>
+                                                <button onClick={() => removeItem(item.id)} className="text-gray-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors">
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            </div>
+                                            
+                                            <div>
+                                                <h5 className="font-bold text-gray-900 text-lg leading-snug mb-1 line-clamp-2 min-h-[3.5rem] flex items-center">
+                                                    {item.title}
+                                                </h5>
+                                                <div className="flex items-center justify-between mt-2">
+                                                    <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
+                                                        {item.id}
+                                                    </span>
+                                                    <div className={`px-2 py-0.5 rounded text-[11px] font-bold ${item.price > 0 ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                        {item.price > 0 ? `₩${item.price.toLocaleString()}` : 'Free'}
                                                     </div>
                                                 </div>
-        
-                                                <button 
-                                                    onClick={() => removeItem(item.id)}
-                                                    className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors self-start"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
+                                            </div>
+    
+                                            <div className="flex flex-wrap gap-1.5 mt-1">
+                                                {item.metaType && (
+                                                    <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold">
+                                                        {item.metaType}
+                                                    </span>
+                                                )}
+                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
+                                                    {item.subCategory}
+                                                </span>
+                                                <span className="text-[10px] bg-gray-50 text-gray-500 border border-gray-100 px-1.5 py-0.5 rounded">{item.category}</span>
+                                            </div>
+                                            
+                                            {item.aiReason && (
+                                                <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 mt-2">
+                                                    <p className="text-xs text-blue-800 leading-relaxed">
+                                                        {item.aiTargetTitle && (
+                                                            <span className="font-bold text-indigo-700 mr-1 block mb-1">
+                                                                🎯 [{item.aiTargetTitle}]
+                                                            </span>
+                                                        )}
+                                                        {item.aiReason}
+                                                    </p>
+                                                </div>
+                                            )}
+
+                                            <div className="mt-auto pt-4 border-t border-gray-50">
+                                                <div className="flex items-center justify-between gap-2 text-xs">
+                                                    <div className="flex flex-col gap-0.5 w-1/2">
+                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">Start</span>
+                                                        <input 
+                                                            type="datetime-local" 
+                                                            value={item.startDate}
+                                                            onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
+                                                            className="w-full bg-gray-50 border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:ring-1 focus:ring-blue-500 outline-none"
+                                                        />
+                                                    </div>
+                                                    <div className="flex flex-col gap-0.5 w-1/2">
+                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">End</span>
+                                                        <input 
+                                                            type="datetime-local" 
+                                                            value={item.endDate}
+                                                            onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
+                                                            className="w-full bg-gray-50 border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:ring-1 focus:ring-blue-500 outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     )) : (
-                                        <div className="text-center py-16 text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
-                                            <AlertTriangle size={24} className="mx-auto mb-2 text-gray-300" />
-                                            <p>검색 결과가 없습니다.</p>
+                                        <div className="col-span-full text-center py-20 text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200">
+                                            <AlertTriangle size={32} className="mx-auto mb-3 text-gray-300" />
+                                            <p className="font-medium">검색 결과가 없습니다.</p>
                                         </div>
                                     )}
                                 </div>
@@ -1046,22 +1053,22 @@
                     </main>
 
                     {viewState === "result" && (
-                        <div className="absolute bottom-6 left-5 right-5 z-30 flex justify-center pointer-events-none">
-                            <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/90 backdrop-blur-md p-2 rounded-2xl border border-white/50 shadow-2xl">
+                        <div className="fixed bottom-6 left-0 right-0 z-30 flex justify-center pointer-events-none px-4">
+                            <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/90 backdrop-blur-xl p-3 rounded-2xl border border-white/50 shadow-2xl ring-1 ring-gray-200/50">
                                 <button 
                                     onClick={() => { setViewState("idle"); setQuery(""); }}
                                     className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition-all"
                                     title="초기화"
                                 >
-                                    <RotateCcw size={22} />
+                                    <RotateCcw size={20} />
                                 </button>
 
                                 <button 
                                     onClick={downloadExcel}
                                     className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-green-600 hover:bg-green-50 active:scale-95 transition-all"
-                                    title="편성 업로드 CSV 다운로드"
+                                    title="CSV 다운로드"
                                 >
-                                    <Download size={22} />
+                                    <Download size={20} />
                                 </button>
                                 
                                 <button 
@@ -1070,13 +1077,13 @@
                                 >
                                     {copied ? (
                                         <>
-                                            <CheckCircle2 size={22} />
-                                            ID 복사 완료
+                                            <CheckCircle2 size={20} />
+                                            <span>복사 완료</span>
                                         </>
                                     ) : (
                                         <>
-                                            <Copy size={22} />
-                                            ID 리스트 복사
+                                            <Copy size={20} />
+                                            <span>ID 리스트 복사</span>
                                         </>
                                     )}
                                 </button>
@@ -1085,49 +1092,51 @@
                     )}
 
                     {showDateModal && (
-                        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center animate-fade-in p-4" onClick={(e) => e.target === e.currentTarget && setShowDateModal(false)}>
-                            <div className="bg-white w-full max-w-sm rounded-2xl p-6 space-y-4 animate-slide-up shadow-2xl">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-lg font-bold">일괄 일시 수정 ({selectedItems.size}건)</h3>
-                                    <button onClick={() => setShowDateModal(false)}><X size={20} className="text-gray-400"/></button>
+                        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in p-4" onClick={(e) => e.target === e.currentTarget && setShowDateModal(false)}>
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 space-y-6 animate-slide-up shadow-2xl">
+                                <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+                                    <h3 className="text-xl font-bold text-gray-800">일괄 일시 수정</h3>
+                                    <button onClick={() => setShowDateModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400"/></button>
                                 </div>
-                                <div className="space-y-3">
+                                <div className="space-y-4">
                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 block mb-1">시작 일시</label>
+                                        <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase tracking-wide">시작 일시</label>
                                         <input 
                                             type="datetime-local" 
                                             value={bulkStartDate}
                                             onChange={(e) => setBulkStartDate(e.target.value)}
-                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                         />
                                     </div>
                                     <div>
-                                        <label className="text-xs font-bold text-gray-500 block mb-1">종료 일시</label>
+                                        <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase tracking-wide">종료 일시</label>
                                         <input 
                                             type="datetime-local" 
                                             value={bulkEndDate}
                                             onChange={(e) => setBulkEndDate(e.target.value)}
-                                            className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                                            className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                         />
                                     </div>
                                 </div>
-                                <button onClick={applyBulkDateEdit} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">적용하기</button>
+                                <button onClick={applyBulkDateEdit} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200">
+                                    {selectedItems.size}건 적용하기
+                                </button>
                             </div>
                         </div>
                     )}
 
                     {showFilters && (
-                        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center sm:justify-center animate-fade-in" onClick={(e) => e.target === e.currentTarget && setShowFilters(false)}>
-                            <div className="bg-white w-full sm:w-[400px] sm:rounded-3xl rounded-t-3xl p-6 pb-10 space-y-6 animate-slide-up shadow-2xl">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-bold">상세 필터</h3>
+                        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center sm:justify-center animate-fade-in" onClick={(e) => e.target === e.currentTarget && setShowFilters(false)}>
+                            <div className="bg-white w-full sm:w-[450px] sm:rounded-3xl rounded-t-3xl p-8 pb-10 space-y-8 animate-slide-up shadow-2xl max-h-[90vh] overflow-y-auto">
+                                <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+                                    <h3 className="text-2xl font-bold text-gray-900">상세 필터</h3>
                                     <button onClick={() => setShowFilters(false)} className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
                                         <X size={20} />
                                     </button>
                                 </div>
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-between bg-red-50 p-3 rounded-xl border border-red-100">
-                                        <span className="text-sm font-bold text-red-600">성인/기타 카테고리 포함</span>
+                                <div className="space-y-6">
+                                    <div className="flex items-center justify-between bg-red-50 p-4 rounded-2xl border border-red-100">
+                                        <span className="text-sm font-bold text-red-700">성인/기타 카테고리 포함</span>
                                         <button 
                                             onClick={() => setIncludeRestricted(!includeRestricted)}
                                             className={`w-12 h-7 rounded-full transition-colors relative ${includeRestricted ? 'bg-red-500' : 'bg-gray-300'}`}
@@ -1135,30 +1144,32 @@
                                             <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${includeRestricted ? 'translate-x-5' : ''}`}></div>
                                         </button>
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-bold text-gray-500">장르</label>
+                                    
+                                    <div className="space-y-3">
+                                        <label className="text-sm font-bold text-gray-500 uppercase tracking-wide">장르 선택</label>
                                         <div className="flex flex-wrap gap-2">
                                             {allGenres.map(g => (
                                                 <button 
                                                     key={g}
                                                     onClick={() => setSelectedGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])}
-                                                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${selectedGenres.includes(g) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                                                    className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${selectedGenres.includes(g) ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                                                 >
                                                     {g}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
-                                    <div className="space-y-2 pt-2 border-t border-gray-100">
-                                        <label className="text-sm font-bold text-gray-500 flex items-center gap-1">
-                                            <DollarSign size={14} /> 가격
+                                    
+                                    <div className="space-y-3 pt-4 border-t border-gray-100">
+                                        <label className="text-sm font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                            <DollarSign size={16} /> 가격대
                                         </label>
-                                        <div className="flex gap-2">
+                                        <div className="flex gap-3">
                                             {[{l:'전체', v:'all'}, {l:'무료', v:'free'}, {l:'유료', v:'paid'}].map(opt => (
                                                 <button
                                                     key={opt.v}
                                                     onClick={() => setPriceType(opt.v)}
-                                                    className={`flex-1 py-3 rounded-xl text-sm font-bold border transition-all ${priceType === opt.v ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                                                    className={`flex-1 py-3.5 rounded-xl text-sm font-bold border transition-all ${priceType === opt.v ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
                                                 >
                                                     {opt.l}
                                                 </button>
@@ -1166,10 +1177,10 @@
                                         </div>
                                         
                                         {priceType === 'paid' && (
-                                            <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 animate-fade-in mt-3">
-                                                <div className="flex justify-between items-center mb-2">
-                                                    <span className="text-xs font-bold text-gray-500">최소 가격 설정</span>
-                                                    <span className="text-sm font-bold text-blue-600">{minPrice.toLocaleString()}원 이상</span>
+                                            <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 animate-fade-in mt-3 space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs font-bold text-gray-500">최소 가격</span>
+                                                    <span className="text-base font-bold text-blue-600 bg-white px-2 py-1 rounded border border-blue-100">{minPrice.toLocaleString()}원 이상</span>
                                                 </div>
                                                 <input 
                                                     type="range" 
@@ -1180,9 +1191,8 @@
                                                     onChange={(e) => setMinPrice(Number(e.target.value))}
                                                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                                                 />
-                                                <div className="flex justify-between text-[10px] text-gray-400 mt-1 px-1">
+                                                <div className="flex justify-between text-[10px] text-gray-400 font-medium">
                                                     <span>0원</span>
-                                                    <span>10,000원</span>
                                                     <span>20,000원+</span>
                                                 </div>
                                             </div>
@@ -1191,7 +1201,7 @@
                                 </div>
                                 <button 
                                     onClick={handleApplyFilterUI}
-                                    className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold text-lg hover:bg-slate-800 transition-colors mt-2"
+                                    className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition-colors shadow-xl"
                                 >
                                     필터 적용하기
                                 </button>
