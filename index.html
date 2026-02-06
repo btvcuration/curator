@@ -280,7 +280,7 @@
             // [NEW] 트렌드 새로고침 로딩 상태
             const [isTrendRefreshing, setIsTrendRefreshing] = useState(false);
 
-            // [NEW] 트렌드 새로고침 핸들러
+            // [수정] 트렌드 새로고침 핸들러 (날씨 보존 로직 추가)
             const handleTrendRefresh = async () => {
                 if (isTrendRefreshing) return; // 중복 클릭 방지
                 setIsTrendRefreshing(true);
@@ -293,7 +293,14 @@
                     
                     if (json.status === 'success') {
                         setTodaysPicks(json.todaysPicks); // 추천 멘트 업데이트
-                        setContext(prev => ({ ...prev, ...json.context })); // 날씨/태그 업데이트
+                        
+                        // [핵심 수정] 날씨(weather, temp)는 덮어쓰지 않고, 트렌드 키워드만 업데이트!
+                        setContext(prev => ({ 
+                            ...prev, // 기존의 '진짜 날씨' 유지
+                            trends: json.context.trends, // 새로운 키워드로 교체
+                            timeContext: json.context.timeContext // 시간대 문구 교체
+                        }));
+                        
                         showToast("🔥 트렌드 픽이 업데이트되었습니다!");
                     }
                 } catch (e) {
