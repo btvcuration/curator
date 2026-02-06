@@ -995,10 +995,10 @@
                                                             {title}
                                                         </h4>
                                                         
-                                                        {/* 태그 영역 (가독성 개선) */}
-                                                        <div className="hidden md:flex flex-wrap gap-1.5 mt-auto">
+                                                        {/* [수정] 태그 영역: hidden 제거하여 모바일에서도 보이게 변경 */}
+                                                        <div className="flex flex-wrap gap-1.5 mt-auto">
                                                             {keywords.map((k, idx) => (
-                                                                <span key={idx} className={`text-[11px] px-2 py-0.5 rounded border font-bold ${style.tag}`}>
+                                                                <span key={idx} className={`text-[10px] px-2 py-0.5 rounded border font-bold ${style.tag}`}>
                                                                     {k}
                                                                 </span>
                                                             ))}
@@ -1201,8 +1201,8 @@
                             <div className="fixed bottom-6 left-0 right-0 z-30 flex justify-center pointer-events-none px-4">
                                 <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/90 backdrop-blur-xl p-3 rounded-2xl border border-white/50 shadow-2xl ring-1 ring-gray-200/50">
                                     <button 
-                                        onClick={resetAllStates} // 깔끔하게 교체
-                                        className="w-14 h-14 bg-white border ..."
+                                        onClick={resetAllStates}
+                                        className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition-all"
                                         title="초기화"
                                     >
                                         <RotateCcw size={20} />
