@@ -660,70 +660,73 @@
                 setResults(filtered);
             };
 
-            // [수정] 1번(오류), 3번(결과없음) 해결을 위한 필터 로직 개선
+            // [최종 수정] 필터 적용 함수 (B tv + 포함 + 에러 코드 완전 제거 + 즉시 실행)
             const handleApplyFilterUI = () => {
                 setShowFilters(false); // 팝업 닫기
-                setIsLoadingData(true); // 로딩 흉내
+                
+                // 1. 필터링 로직 (로딩 없이 즉시 실행)
+                try {
+                    let sourceData = dbData; 
+                    
+                    // 검색어(query)가 있고 검색 결과가 있다면 그 안에서 필터링
+                    if (query.trim() !== "" && Array.isArray(originalSearchResults) && originalSearchResults.length > 0) {
+                        sourceData = originalSearchResults; 
+                    }
 
-                setTimeout(() => {
-                    try {
-                        // 검색 중이면 검색 결과(originalSearchResults)에서, 아니면 전체 DB(dbData)에서 필터링
-                        let sourceData = dbData; 
-                        if (query.trim() !== "" && originalSearchResults.length > 0) {
-                            sourceData = originalSearchResults; 
+                    const filtered = sourceData.filter(item => {
+                        // [안전 장치] 변수 선언 (prod 포함!)
+                        const cat = String(item.category || "");
+                        const subCat = String(item.subCategory || "");
+                        const meta = String(item.metaType || "");
+                        const price = Number(item.price || 0);
+                        const prod = String(item.products || ""); // [필수] 상품명 변수 선언
+
+                        // 1. 성인/기타 제외
+                        if (!includeRestricted) {
+                            if (cat.includes('성인') || cat.includes('기타') || cat.includes('adult') || cat.includes('etc')) return false;
+                        }
+                        
+                        // 2. 장르 필터
+                        if (selectedGenres.length > 0) {
+                            const isMatch = selectedGenres.some(g => cat.includes(g) || subCat.includes(g));
+                            if (!isMatch) return false;
+                        }
+                        
+                        // 3. 메타 유형 필터
+                        if (selectedMetaTypes.length > 0) {
+                            const isMatch = selectedMetaTypes.some(t => meta.includes(t));
+                            if (!isMatch) return false;
+                        }
+                        
+                        // 4. 가격 필터
+                        if (priceType === 'free' && price > 0) return false;
+                        if (priceType === 'paid') {
+                            if (price === 0) return false;
+                            if (price < minPrice) return false;
                         }
 
-                        const filtered = sourceData.filter(item => {
-                            // [안전 장치] 데이터가 없어도 에러 안 나게 문자열 변환
-                            const cat = String(item.category || "");
-                            const subCat = String(item.subCategory || "");
-                            const meta = String(item.metaType || "");
-                            const price = Number(item.price || 0);
+                        // 5. [NEW] B tv + 필터 (prod 변수 사용)
+                        if (onlyBtvPlus) {
+                            if (!prod.includes("B tv +")) return false;
+                        }
 
-                            // 1. 성인/기타 제외
-                            // '성인'이나 '기타'가 포함된 경우 제외 (includeRestricted가 false일 때)
-                            if (!includeRestricted) {
-                                if (cat.includes('성인') || cat.includes('기타') || cat.includes('adult') || cat.includes('etc')) return false;
-                            }
-                            
-                            // 2. 장르 필터 (문제의 3번 해결: subCategory가 아니라 category를 비교하거나 둘 다 비교)
-                            if (selectedGenres.length > 0) {
-                                // 카테고리 또는 서브카테고리 중 하나라도 선택된 장르와 일치하면 통과
-                                const isMatch = selectedGenres.some(g => cat.includes(g) || subCat.includes(g));
-                                if (!isMatch) return false;
-                            }
-                            
-                            // 3. 메타 유형 필터
-                            if (selectedMetaTypes.length > 0) {
-                                const isMatch = selectedMetaTypes.some(t => meta.includes(t));
-                                if (!isMatch) return false;
-                            }
-                            
-                            // 4. 가격 필터
-                            if (priceType === 'free' && price > 0) return false;
-                            if (priceType === 'paid') {
-                                if (price === 0) return false;
-                                if (price < minPrice) return false;
-                            }
-                            if (onlyBtvPlus) {
-                                // 상품명에 "B tv +"가 포함되어 있지 않으면 탈락
-                                if (!prod.includes("B tv +")) return false;
-                            }
+                        return true;
+                    });
 
-                            return true;
-                        });
-
-                        setResults(filtered);
-
+                    // 2. 결과 반영
+                    setResults(filtered);
+                    
+                    // 3. 결과 메시지
+                    if (filtered.length === 0) {
+                        showToast("조건에 맞는 콘텐츠가 없습니다.");
+                    } else {
                         showToast(`필터 적용 완료 (${filtered.length.toLocaleString()}건)`);
-
-                    } catch (error) {
-                        console.error("Filter Logic Error:", error);
-                        showToast("필터 처리 중 오류가 발생했습니다.");
-                    } finally {
-                        setIsLoadingData(false); 
                     }
-                }, 200); 
+
+                } catch (error) {
+                    console.error("Filter Logic Error:", error);
+                    showToast("필터 처리 중 오류가 발생했습니다.");
+                }
             };
 
             const toggleSelection = (id) => {
