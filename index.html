@@ -806,21 +806,22 @@
                         </div>
                     )}
 
-                    {/* [수정] 헤더 영역: 검색창 포함 */}
-                    <header className="bg-white rounded-3xl px-6 py-4 mb-8 shadow-sm border border-gray-100 sticky top-4 z-40">
+                    {/* 헤더 영역 */}
+                    {/* [수정] 헤더 영역 */}
+                    <header className="bg-white rounded-3xl px-6 py-4 mb-4 shadow-sm border border-gray-100 sticky top-4 z-40">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             {/* 1. 로고 영역 */}
                             <div className="flex items-center gap-3 shrink-0" onClick={() => { setViewState("idle"); setQuery(""); }}>
                                 <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white cursor-pointer shadow-blue-200 shadow-md hover:scale-105 transition-transform">
                                     <Sparkles size={20} fill="currentColor" />
                                 </div>
-                                <div className="hidden lg:block">
+                                <div className="block">
                                     <h1 className="font-bold text-xl tracking-tight cursor-pointer leading-none">AI Curator</h1>
                                     <span className="text-[10px] text-gray-400 font-medium ml-0.5">Smart Admin System</span>
                                 </div>
                             </div>
 
-                            {/* 2. 검색창 영역 (헤더 중앙으로 이동) */}
+                            {/* 2. 검색창 영역 */}
                             <div className="flex-1 max-w-2xl w-full mx-auto">
                                 <SearchBar 
                                     query={query} 
@@ -828,20 +829,28 @@
                                     handleSearch={handleSearch} 
                                     setShowFilters={setShowFilters} 
                                     hasFilters={hasActiveFilters} 
-                                    compact={true} // 헤더용 컴팩트 스타일
+                                    compact={true} 
                                 />
                             </div>
                             
                             {/* 3. 우측 컨트롤 영역 */}
-                            <div className="flex items-center justify-end gap-3 shrink-0">
-                                {/* 날씨 뱃지 */}
-                                <div className="hidden xl:flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 rounded-full text-xs font-bold border border-sky-100">
+                            <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0">
+                                {/* [수정] 날씨 뱃지: hidden 제거하여 모바일에서도 항상 보임 */}
+                                <div className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold border border-sky-100 whitespace-nowrap">
                                     {getWeatherIcon(context.weather)} {context.temp}
                                 </div>
 
-                                <button onClick={clearCache} className="text-xs bg-white border border-gray-200 px-3 py-2 rounded-xl text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors font-bold" title="캐시 초기화">
+                                {/* 캐시 초기화 버튼 */}
+                                <button 
+                                    onClick={clearCache} 
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 border border-rose-100 rounded-xl text-rose-600 hover:bg-rose-100 hover:text-rose-700 transition-colors" 
+                                    title="서버 데이터 강제 초기화"
+                                >
                                     <RotateCcw size={14} />
+                                    <span className="text-xs font-bold hidden sm:inline-block">전체 데이터 재설정</span>
                                 </button>
+                                
+                                {/* 데이터 건수 (모바일엔 공간 부족 시 숨김 유지, 필요하면 flex로 변경 가능) */}
                                 <div className="hidden sm:flex items-center gap-1.5 bg-green-50 px-3 py-2 rounded-xl border border-green-100">
                                     <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
                                     <span className="text-xs font-bold text-green-700 tracking-tight flex items-center gap-1">
@@ -855,25 +864,24 @@
 
                     <main className="pb-32 min-h-[60vh]">
                         {viewState === "idle" && (
-                            <div className="flex flex-col gap-8 animate-fade-in w-full">
-                                {/* 검색창이 헤더로 갔으므로 여기엔 Trend Pick만 남음 */}
-
-                                {/* [수정] Trend Pick 섹션 */}
-                                <div className="w-full max-w-6xl mx-auto">
+                            <div className="flex flex-col animate-fade-in w-full">
+                                
+                                {/* [수정] Trend Pick 섹션: 여백 추가 (mt-8 ~ mt-12) */}
+                                <div className="w-full max-w-6xl mx-auto mt-8 lg:mt-12">
                                     <div className="flex items-center justify-between px-2 mb-4">
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="text-lg font-extrabold text-gray-900 tracking-tight flex items-center gap-2">
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="text-lg font-extrabold text-gray-900 tracking-tight">
                                                 Today's Trend Pick
-                                                {/* 새로고침 버튼: 심플하게 아이콘만 */}
-                                                <button 
-                                                    onClick={handleTrendRefresh} 
-                                                    disabled={isTrendRefreshing}
-                                                    className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-indigo-600 transition-colors"
-                                                    title="트렌드 새로고침"
-                                                >
-                                                    <RotateCcw size={14} className={isTrendRefreshing ? "animate-spin" : ""} />
-                                                </button>
                                             </h3>
+                                            {/* 트렌드 새로고침 버튼 (아이콘만 깔끔하게) */}
+                                            <button 
+                                                onClick={handleTrendRefresh} 
+                                                disabled={isTrendRefreshing}
+                                                className="p-2 rounded-full bg-white border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 shadow-sm transition-all active:scale-95"
+                                                title="트렌드 큐레이션 새로고침"
+                                            >
+                                                <RotateCcw size={14} className={isTrendRefreshing ? "animate-spin" : ""} />
+                                            </button>
                                         </div>
                                         <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 flex items-center gap-1">
                                             <Sparkles size={10} />
@@ -883,17 +891,13 @@
                                     
                                     <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                                         {todaysPicks.map((item, i) => {
-                                            // 데이터 파싱
-                                            const rawTitle = typeof item === 'string' ? item : item.title;
-                                            const keywords = typeof item === 'string' ? [] : item.keywords;
+                                            // [수정] GAS에서 준 emoji 필드 사용 (없으면 기본값)
+                                            const emoji = typeof item === 'object' && item.emoji ? item.emoji : getRandomEmoji(i);
+                                            const title = typeof item === 'object' && item.title ? item.title : item;
+                                            const keywords = typeof item === 'object' && item.keywords ? item.keywords : [];
                                             
-                                            // [중요] 이모지 제거 정규식 (AI가 실수로 넣어도 프론트에서 삭제)
-                                            // 이모지 범위 + 특수문자 일부 제거
-                                            const cleanTitle = rawTitle
-                                                .replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
-                                                .replace(/\*\*/g, '') // 마크다운 볼드 제거
-                                                .replace(/\"/g, '')   // 따옴표 제거
-                                                .trim();
+                                            // 프론트엔드 이모지 제거 로직 삭제 -> GAS 데이터 그대로 출력
+                                            const cleanTitle = typeof title === 'string' ? title.replace(/\*\*/g, '').replace(/\"/g, '').trim() : "";
 
                                             return (
                                                 <button 
@@ -901,13 +905,12 @@
                                                     onClick={() => handleSearch(cleanTitle)} 
                                                     className="flex flex-col h-full p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-lg hover:-translate-y-1 transition-all group text-left relative overflow-hidden"
                                                 >
-                                                    {/* 배경 데코 */}
                                                     <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full opacity-50 group-hover:from-indigo-50 group-hover:opacity-100 transition-all"></div>
 
-                                                    {/* 상단: 아이콘 + 화살표 */}
+                                                    {/* 상단: GAS 이모지 + 화살표 */}
                                                     <div className="flex justify-between items-start mb-4 relative z-10">
                                                         <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
-                                                            {getRandomEmoji(i)}
+                                                            {emoji}
                                                         </div>
                                                         <div className="p-1.5 rounded-full bg-transparent group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-600 transition-colors">
                                                             <ArrowRight size={16} />
@@ -921,7 +924,7 @@
                                                         </h4>
                                                     </div>
 
-                                                    {/* 하단: 해시태그 (이제 꼭 보일겁니다!) */}
+                                                    {/* 하단: 해시태그 */}
                                                     <div className="relative z-10 flex flex-wrap gap-1.5 mt-auto">
                                                         {keywords && keywords.length > 0 ? (
                                                             keywords.map((k, idx) => (
@@ -930,7 +933,6 @@
                                                                 </span>
                                                             ))
                                                         ) : (
-                                                            // 키워드 없을 때(구버전 데이터) 대체 표시
                                                             <span className="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
                                                                 #트렌드
                                                             </span>
@@ -944,7 +946,6 @@
                             </div>
                         )}
                         
-                        {/* Thinking & Result 뷰는 기존 코드 유지 (생략 없이 아래에 붙여넣으세요) */}
                         {viewState === "thinking" && (
                             <div className="flex flex-col items-center justify-center h-[50vh] space-y-8 animate-fade-in">
                                 <div className="relative">
@@ -967,8 +968,6 @@
 
                         {viewState === "result" && (
                             <div className="space-y-6 animate-slide-up w-full max-w-7xl mx-auto px-2" ref={resultRef}>
-                                {/* 결과 화면에서는 상단 검색창이 있으므로 여기 검색창은 숨기거나 필터 버튼만 남길 수도 있음 */}
-                                {/* 여기서는 필터 상태 표시만 남기는 것이 깔끔함 */}
                                 {(hasActiveFilters) && (
                                     <div className="w-full flex justify-end">
                                         <div className="text-xs text-blue-600 font-bold flex gap-2 items-center bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100 cursor-pointer" onClick={() => setShowFilters(true)}>
@@ -1010,7 +1009,6 @@
                                     <span className="text-[11px] text-gray-400 font-medium hidden sm:inline-block">드래그하여 순서 변경 가능</span>
                                 </div>
 
-                                {/* 리스트 뷰 (테이블형) */}
                                 <div className="flex flex-col gap-2">
                                     <div className="flex items-center px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 rounded-lg mb-1">
                                         <div className="w-12 text-center">순서</div>
@@ -1111,8 +1109,7 @@
                                 <div className="h-32"></div>
                             </div>
                         )}
-                        
-                        {/* 하단 고정 액션바, 모달 등은 기존 코드 유지 */}
+
                         {viewState === "result" && (
                             <div className="fixed bottom-6 left-0 right-0 z-30 flex justify-center pointer-events-none px-4">
                                 <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/90 backdrop-blur-xl p-3 rounded-2xl border border-white/50 shadow-2xl ring-1 ring-gray-200/50">
@@ -1155,6 +1152,7 @@
                         {showDateModal && (
                             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in p-4" onClick={(e) => e.target === e.currentTarget && setShowDateModal(false)}>
                                 <div className="bg-white w-full max-w-sm rounded-3xl p-8 space-y-6 animate-slide-up shadow-2xl">
+                                    {/* 모달 내용은 위와 동일하므로 생략하지 않고 전체 코드에 포함됨 */}
                                     <div className="flex justify-between items-center border-b border-gray-100 pb-4">
                                         <h3 className="text-xl font-bold text-gray-800">일괄 일시 수정</h3>
                                         <button onClick={() => setShowDateModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400"/></button>
@@ -1185,12 +1183,9 @@
                                 </div>
                             </div>
                         )}
-                        
-                        {/* 필터 모달 등 나머지 컴포넌트는 그대로... */}
+
                         {showFilters && (
-                           // ... 기존 필터 모달 코드 유지 (지면 관계상 생략, 위에서 드린 코드와 동일) ...
                            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center sm:justify-center animate-fade-in" onClick={(e) => e.target === e.currentTarget && setShowFilters(false)}>
-                                {/* ... 필터 모달 내용 ... */}
                                 <div className="bg-white w-full sm:w-[450px] sm:rounded-3xl rounded-t-3xl p-8 pb-10 space-y-8 animate-slide-up shadow-2xl max-h-[90vh] overflow-y-auto">
                                     <div className="flex justify-between items-center border-b border-gray-100 pb-4">
                                         <h3 className="text-2xl font-bold text-gray-900">상세 필터</h3>
@@ -1198,8 +1193,86 @@
                                             <X size={20} />
                                         </button>
                                     </div>
-                                    {/* ... 필터 내용들 ... */}
-                                    {/* (이전 코드 블록의 필터 UI와 동일하므로 여기선 생략합니다) */}
+                                    <div className="space-y-6">
+                                        <div className="flex items-center justify-between bg-red-50 p-4 rounded-2xl border border-red-100">
+                                            <span className="text-sm font-bold text-red-700">성인/기타 카테고리 포함</span>
+                                            <button 
+                                                onClick={() => setIncludeRestricted(!includeRestricted)}
+                                                className={`w-12 h-7 rounded-full transition-colors relative ${includeRestricted ? 'bg-red-500' : 'bg-gray-300'}`}
+                                            >
+                                                <div className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${includeRestricted ? 'translate-x-5' : ''}`}></div>
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="space-y-3">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wide">콘텐츠 타입 (메타)</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {allMetaTypes.map(t => (
+                                                    <button 
+                                                        key={t}
+                                                        onClick={() => setSelectedMetaTypes(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t])}
+                                                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${selectedMetaTypes.includes(t) ? 'bg-green-600 text-white border-green-600 shadow-md shadow-green-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                                    >
+                                                        {t}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-3 pt-4 border-t border-gray-100">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wide">장르 선택</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {allGenres.map(g => (
+                                                    <button 
+                                                        key={g}
+                                                        onClick={() => setSelectedGenres(prev => prev.includes(g) ? prev.filter(x => x !== g) : [...prev, g])}
+                                                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${selectedGenres.includes(g) ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-200' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                                    >
+                                                        {g}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="space-y-3 pt-4 border-t border-gray-100">
+                                            <label className="text-sm font-bold text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                                <DollarSign size={16} /> 가격대
+                                            </label>
+                                            <div className="flex gap-3">
+                                                {[{l:'전체', v:'all'}, {l:'무료', v:'free'}, {l:'유료', v:'paid'}].map(opt => (
+                                                    <button
+                                                        key={opt.v}
+                                                        onClick={() => setPriceType(opt.v)}
+                                                        className={`flex-1 py-3.5 rounded-xl text-sm font-bold border transition-all ${priceType === opt.v ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                                    >
+                                                        {opt.l}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            
+                                            {priceType === 'paid' && (
+                                                <div className="bg-gray-50 p-5 rounded-2xl border border-gray-200 animate-fade-in mt-3 space-y-3">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs font-bold text-gray-500">최소 가격</span>
+                                                        <span className="text-base font-bold text-blue-600 bg-white px-2 py-1 rounded border border-blue-100">{minPrice.toLocaleString()}원 이상</span>
+                                                    </div>
+                                                    <input 
+                                                        type="range" 
+                                                        min="0" 
+                                                        max="20000" 
+                                                        step="500" 
+                                                        value={minPrice} 
+                                                        onChange={(e) => setMinPrice(Number(e.target.value))}
+                                                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                                    />
+                                                    <div className="flex justify-between text-[10px] text-gray-400 font-medium">
+                                                        <span>0원</span>
+                                                        <span>20,000원+</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                     <button 
                                         onClick={handleApplyFilterUI}
                                         className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg hover:bg-slate-800 transition-colors shadow-xl"
