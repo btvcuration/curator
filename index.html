@@ -879,71 +879,88 @@
                     <main className="pb-32 min-h-[60vh]">
                         {viewState === "idle" && (
                             <div className="flex flex-col animate-fade-in w-full">
-                                {/* [수정] Trend Pick 섹션: 데이터 강제 파싱 적용 */}
-                                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                                    {todaysPicks.map((item, i) => {
-                                        // [강제 파싱 로직]
-                                        let emoji = getRandomEmoji(i);
-                                        let title = "";
-                                        let keywords = [];
-
-                                        if (typeof item === 'object' && item !== null && item.emoji) {
-                                            // 1. 정상적인 객체 데이터 (GAS 업데이트 반영)
-                                            emoji = item.emoji;
-                                            title = item.title;
-                                            keywords = item.keywords || [];
-                                        } else {
-                                            // 2. 문자열 데이터 (캐시된 옛날 데이터 or Fallback) -> 강제 분해
-                                            const str = String(item);
-                                            // 이모지 추출 (유니코드 범위)
-                                            const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
-                                            if (emojiMatch) {
-                                                emoji = emojiMatch[0]; 
-                                            }
-                                            // 제목 정제 (이모지, 마크다운 제거)
-                                            title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
-                                                       .replace(/\*\*/g, '').replace(/\"/g, '').trim();
-                                            
-                                            // 키워드가 없으면 기본값
-                                            keywords = ["#트렌드", "#추천"]; 
-                                        }
-
-                                        return (
+                                
+                                {/* [복구 완료] 사라졌던 헤더 영역 (제목 + 새로고침 버튼 + 뱃지) */}
+                                <div className="w-full max-w-6xl mx-auto mt-10">
+                                    <div className="flex items-center justify-between px-2 mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <h3 className="text-lg font-extrabold text-gray-900 tracking-tight">
+                                                Today's Trend Pick
+                                            </h3>
                                             <button 
-                                                key={i} 
-                                                onClick={() => handleSearch(title)} 
-                                                className="flex flex-col h-full p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-lg hover:-translate-y-1 transition-all group text-left relative overflow-hidden"
+                                                onClick={handleTrendRefresh} 
+                                                disabled={isTrendRefreshing}
+                                                className="p-2 rounded-full bg-white border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 shadow-sm transition-all active:scale-95 group"
+                                                title="최신 트렌드로 업데이트"
                                             >
-                                                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full opacity-50 group-hover:from-indigo-50 group-hover:opacity-100 transition-all"></div>
-
-                                                {/* 상단: 파싱된 이모지 */}
-                                                <div className="flex justify-between items-start mb-4 relative z-10">
-                                                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
-                                                        {emoji}
-                                                    </div>
-                                                    <div className="p-1.5 rounded-full bg-transparent group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-600 transition-colors">
-                                                        <ArrowRight size={16} />
-                                                    </div>
-                                                </div>
-                                                
-                                                {/* 중단: 정제된 제목 */}
-                                                <div className="flex-1 relative z-10 mb-3">
-                                                    <h4 className="text-[15px] font-bold text-gray-800 leading-snug group-hover:text-indigo-700 transition-colors word-keep-all line-clamp-3">
-                                                        {title}
-                                                    </h4>
-                                                </div>
-
-                                                {/* 하단: 파싱된 태그 */}
-                                                <div className="relative z-10 flex flex-wrap gap-1.5 mt-auto">
-                                                    {keywords.map((k, idx) => (
-                                                        <span key={idx} className="text-[10px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100 font-medium group-hover:border-indigo-100 group-hover:text-indigo-500 transition-colors">
-                                                            {k}
-                                                        </span>
-                                                    ))}
-                                                </div>
+                                                {/* 회전 애니메이션 적용 */}
+                                                <RotateCcw size={14} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
                                             </button>
-                                        );
-                                    })}
+                                        </div>
+                                        <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 flex items-center gap-1">
+                                            <Sparkles size={10} />
+                                            실시간 이슈 반영
+                                        </span>
+                                    </div>
+                                    
+                                    {/* 카드 리스트 영역 (기존 로직 유지) */}
+                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                        {todaysPicks.map((item, i) => {
+                                            // [강제 파싱 로직]
+                                            let emoji = getRandomEmoji(i);
+                                            let title = "";
+                                            let keywords = [];
+
+                                            if (typeof item === 'object' && item !== null && item.emoji) {
+                                                emoji = item.emoji;
+                                                title = item.title;
+                                                keywords = item.keywords || [];
+                                            } else {
+                                                const str = String(item);
+                                                const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
+                                                if (emojiMatch) emoji = emojiMatch[0];
+                                                title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+                                                           .replace(/\*\*/g, '').replace(/\"/g, '').trim();
+                                                keywords = ["#트렌드", "#추천"];
+                                            }
+
+                                            return (
+                                                <button 
+                                                    key={i} 
+                                                    onClick={() => handleSearch(title)} 
+                                                    className="flex flex-col h-full p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-lg hover:-translate-y-1 transition-all group text-left relative overflow-hidden"
+                                                >
+                                                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full opacity-50 group-hover:from-indigo-50 group-hover:opacity-100 transition-all"></div>
+                                                    
+                                                    {/* 상단: 이모지 */}
+                                                    <div className="flex justify-between items-start mb-4 relative z-10">
+                                                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
+                                                            {emoji}
+                                                        </div>
+                                                        <div className="p-1.5 rounded-full bg-transparent group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-600 transition-colors">
+                                                            <ArrowRight size={16} />
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    {/* 중단: 제목 */}
+                                                    <div className="flex-1 relative z-10 mb-3">
+                                                        <h4 className="text-[15px] font-bold text-gray-800 leading-snug group-hover:text-indigo-700 transition-colors word-keep-all line-clamp-3">
+                                                            {title}
+                                                        </h4>
+                                                    </div>
+
+                                                    {/* 하단: 태그 */}
+                                                    <div className="relative z-10 flex flex-wrap gap-1.5 mt-auto">
+                                                        {keywords.map((k, idx) => (
+                                                            <span key={idx} className="text-[10px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100 font-medium group-hover:border-indigo-100 group-hover:text-indigo-500 transition-colors">
+                                                                {k}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
                             </div>
                         )}
