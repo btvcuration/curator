@@ -473,9 +473,6 @@
                 setPriceType("all");
                 setIncludeRestricted(false);
                 setMinPrice(0);
-                
-                // 필터 아이콘 상태 끄기
-                setHasActiveFilters(false); 
             };
 
             const handleSearch = async (inputQuery) => {
@@ -710,11 +707,6 @@
                         });
 
                         setResults(filtered);
-                        
-                        // 필터 아이콘 활성화 상태 갱신
-                        setHasActiveFilters(
-                            includeRestricted || selectedGenres.length > 0 || selectedMetaTypes.length > 0 || priceType !== 'all'
-                        );
 
                         showToast(`필터 적용 완료 (${filtered.length.toLocaleString()}건)`);
 
