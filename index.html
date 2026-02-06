@@ -304,12 +304,11 @@
                         
                         // [핵심 수정] 날씨(weather, temp)는 덮어쓰지 않고, 트렌드 키워드만 업데이트!
                         setContext(prev => ({ 
-                            ...prev, // 기존의 '진짜 날씨' 유지
-                            trends: json.context.trends, // 새로운 키워드로 교체
-                            timeContext: json.context.timeContext // 시간대 문구 교체
+                            ...prev,
+                            ...json.context 
                         }));
                         
-                        showToast("🔥 트렌드 픽이 업데이트되었습니다!");
+                        showToast("🔥 트렌드와 날씨가 업데이트되었습니다!");
                     }
                 } catch (e) {
                     console.error(e);
@@ -388,12 +387,14 @@
                         .then(res => res.json())
                         .then(json => {
                             if (json.status === 'success') {
-                                console.log("📅 서버 트렌드 동기화 완료");
+                                console.log("📅 서버 트렌드 & 날씨 동기화 완료");
                                 setTodaysPicks(json.todaysPicks);
+                                
+                                // [수정] 이제 GAS가 서울 날씨를 가져오므로, 
+                                // 복잡한 조건문 없이 그냥 서버 데이터로 덮어씌우면 됩니다! (심플!)
                                 setContext(prev => ({ 
                                     ...prev, 
-                                    trends: json.context.trends,
-                                    timeContext: json.context.timeContext // 시간대 문구 등
+                                    ...json.context // 날씨, 시간, 트렌드 모두 최신화
                                 }));
                             }
                         })
