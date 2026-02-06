@@ -343,6 +343,11 @@
                 : [];
 
             const hasActiveFilters = selectedGenres.length > 0 || priceType !== 'all' || includeRestricted;
+            const allMetaTypes = React.useMemo(() => {
+                if (!dbData) return [];
+                const types = new Set(dbData.map(d => d.metaType).filter(t => t && t.trim() !== ''));
+                return Array.from(types).sort();
+            }, [dbData]);
 
             useEffect(() => {
                 if (isLoadingData) {
@@ -354,11 +359,6 @@
             }, [isLoadingData]);
 
             useEffect(() => {
-                const allMetaTypes = React.useMemo(() => {
-                    if (!dbData) return [];
-                    const types = new Set(dbData.map(d => d.metaType).filter(t => t && t.trim() !== ''));
-                    return Array.from(types).sort();
-                }, [dbData]);
                 const initApp = async () => {
                     setIsLoadingData(true);
                     
