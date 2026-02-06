@@ -802,7 +802,7 @@
                             </div>
                         </div>
 
-                        {/* 상단 태그 영역: 날씨만 남김 */}
+                        {/* 상단 태그 영역: 날씨만 표시 */}
                         <div className="flex gap-2 mt-4 overflow-x-auto pb-1 scrollbar-hide">
                             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-50 text-sky-700 rounded-full text-xs font-bold whitespace-nowrap border border-sky-100">
                                 {getWeatherIcon(context.weather)} {context.temp} {context.weather}
@@ -824,94 +824,65 @@
                                     />
                                 </div>
 
-                                {/* Trend Pick 섹션: Bento Grid 적용 */}
-                                <div className="w-full">
-                                    <div className="flex items-center justify-between border-b border-gray-200 pb-4 mb-5">
+                                {/* [수정] Trend Pick 섹션: 깔끔한 가로 리스트 형태 + 해시태그 */}
+                                <div className="w-full max-w-5xl mx-auto">
+                                    <div className="flex items-center justify-between border-b border-gray-200 pb-4 mb-4">
                                         <div className="flex items-center gap-3">
                                             <h3 className="text-xl font-extrabold text-gray-900 tracking-tight">Today's Trend Pick</h3>
                                             <button 
                                                 onClick={handleTrendRefresh} 
                                                 disabled={isTrendRefreshing}
-                                                className="group flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 shadow-sm"
-                                                title="최신 트렌드로 업데이트"
+                                                className="group flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 shadow-sm"
                                             >
                                                 <RotateCcw size={14} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
                                                 <span className="text-xs font-bold text-gray-500 group-hover:text-indigo-600">새로고침</span>
                                             </button>
                                         </div>
-
                                         <span className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 flex items-center gap-1.5">
                                             <Sparkles size={12} className="text-blue-600" />
                                             실시간 이슈 반영
                                         </span>
                                     </div>
                                     
-                                    {/* Bento Grid (1 Hero + 4 Sub) */}
-                                    <div className={`grid grid-cols-1 lg:grid-cols-3 gap-6 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                                        
-                                        {/* 1. Hero Card */}
-                                        {todaysPicks.length > 0 && (
-                                            <div className="lg:col-span-1 lg:row-span-2 h-full">
+                                    <div className={`flex flex-col gap-3 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                        {todaysPicks.map((item, i) => {
+                                            // GAS 데이터 호환성 처리 (문자열 vs 객체)
+                                            const title = typeof item === 'string' ? item : item.title;
+                                            const keywords = typeof item === 'string' ? [] : item.keywords;
+
+                                            return (
                                                 <button 
-                                                    onClick={() => handleSearch(todaysPicks[0].replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} 
-                                                    className="w-full h-full p-8 rounded-3xl text-left shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all border flex flex-col gap-6 bg-white border-gray-100 hover:border-blue-300 group relative overflow-hidden min-h-[320px]"
+                                                    key={i} 
+                                                    onClick={() => handleSearch(title.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} 
+                                                    className="w-full flex items-center justify-between p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-md hover:-translate-y-0.5 transition-all group text-left"
                                                 >
-                                                    <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-bl from-blue-50 to-transparent opacity-50 group-hover:opacity-100 transition-opacity"></div>
-                                                    
-                                                    <div className="relative z-10 flex items-center gap-2">
-                                                        <span className="px-2.5 py-1 rounded bg-red-50 text-red-600 text-[10px] font-bold border border-red-100 animate-pulse">
-                                                            HOT TOPIC
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="w-20 h-20 rounded-2xl bg-slate-50 flex items-center justify-center text-5xl group-hover:scale-110 transition-transform border border-slate-100 z-10 shadow-sm">
-                                                        {getRandomEmoji(0)}
-                                                    </div>
-
-                                                    <div className="flex-1 z-10">
-                                                        <h4 className="text-xl md:text-2xl font-extrabold text-gray-900 leading-snug group-hover:text-blue-700 transition-colors word-keep-all line-clamp-4">
-                                                            {todaysPicks[0].replace(/\*\*/g, '').replace(/\"/g, '')}
-                                                        </h4>
-                                                    </div>
-
-                                                    <div className="w-full flex justify-between items-center z-10 mt-auto pt-6 border-t border-gray-50">
-                                                        <span className="text-xs font-medium text-gray-400">지금 가장 많이 검색된 이슈</span>
-                                                        <div className="p-2.5 rounded-full bg-gray-50 group-hover:bg-blue-600 group-hover:text-white text-gray-300 transition-colors">
-                                                            <ArrowRight size={20} />
+                                                    <div className="flex items-center gap-5 w-full">
+                                                        <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl group-hover:bg-indigo-50 transition-colors border border-slate-100 shrink-0">
+                                                            {getRandomEmoji(i)}
                                                         </div>
-                                                    </div>
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        {/* 2. Sub Cards (2x2 Grid) */}
-                                        <div className="lg:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {todaysPicks.slice(1, 5).map((sent, i) => {
-                                                const cleanText = sent.replace(/\*\*/g, '').replace(/\"/g, '');
-                                                return (
-                                                    <button 
-                                                        key={i + 1} 
-                                                        onClick={() => handleSearch(cleanText.replace(/[^a-zA-Z0-9가-힣\s]/g, "").trim())} 
-                                                        className="p-6 rounded-2xl text-left shadow-sm hover:shadow-md hover:-translate-y-1 transition-all w-full border flex flex-col justify-between gap-4 bg-white border-gray-100 hover:border-indigo-300 group min-h-[150px]"
-                                                    >
-                                                        <div className="flex items-start justify-between w-full">
-                                                            <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-2xl group-hover:bg-indigo-50 transition-colors border border-slate-100">
-                                                                {getRandomEmoji(i + 1)}
-                                                            </div>
-                                                            <div className="p-1 rounded-full text-gray-200 group-hover:text-indigo-400 transition-colors">
+                                                        <div className="flex-1 min-w-0">
+                                                            <h4 className="text-base font-bold text-gray-800 group-hover:text-indigo-700 transition-colors truncate">
+                                                                {title.replace(/\*\*/g, '')}
+                                                            </h4>
+                                                            {keywords && keywords.length > 0 && (
+                                                                <div className="flex flex-wrap gap-2 mt-1.5">
+                                                                    {keywords.map((k, idx) => (
+                                                                        <span key={idx} className="text-[11px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100 font-medium">
+                                                                            {k}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <div className="pl-4 shrink-0">
+                                                            <div className="p-2 rounded-full bg-gray-50 group-hover:bg-indigo-100 text-gray-300 group-hover:text-indigo-600 transition-colors">
                                                                 <ArrowRight size={18} />
                                                             </div>
                                                         </div>
-                                                        
-                                                        <div>
-                                                            <span className="text-gray-800 text-[15px] font-bold leading-snug group-hover:text-indigo-700 transition-colors block word-keep-all line-clamp-2">
-                                                                {cleanText}
-                                                            </span>
-                                                        </div>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             </div>
@@ -988,101 +959,111 @@
                                     <span className="text-[11px] text-gray-400 font-medium hidden sm:inline-block">드래그하여 순서 변경 가능</span>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
+                                {/* [수정] 검색 결과: 한 줄 리스트 형태 (테이블형) */}
+                                <div className="flex flex-col gap-2">
+                                    {/* 리스트 헤더 */}
+                                    <div className="flex items-center px-4 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider bg-gray-50 rounded-lg mb-1">
+                                        <div className="w-12 text-center">순서</div>
+                                        <div className="flex-1 pl-2">콘텐츠 정보</div>
+                                        <div className="w-32 text-center hidden md:block">카테고리</div>
+                                        <div className="w-48 text-center hidden lg:block">편성 기간</div>
+                                        <div className="w-10"></div>
+                                    </div>
+
                                     {results.length > 0 ? results.map((item, idx) => (
                                         <div 
                                             key={item.id} 
-                                            className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col gap-3 group transition-all draggable-item relative ${selectedItems.has(item.id) ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-50/10' : 'border-gray-100 hover:border-blue-300 hover:shadow-md'}`}
+                                            className={`group relative flex items-center gap-4 bg-white p-3 rounded-xl border transition-all draggable-item hover:shadow-md ${selectedItems.has(item.id) ? 'border-blue-500 bg-blue-50/10 ring-1 ring-blue-500' : 'border-gray-200 hover:border-blue-300'}`}
                                             draggable
                                             onDragStart={(e) => onDragStart(e, idx)}
                                             onDragEnter={(e) => onDragEnter(e, idx)}
                                             onDragEnd={onDragEnd}
                                             onDragOver={onDragOver}
                                         >
-                                            <div className="flex items-start justify-between gap-3">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing p-1">
-                                                        <GripVertical size={20} />
-                                                    </div>
-                                                    <button onClick={() => toggleSelection(item.id)} className="text-gray-300 hover:text-blue-500 transition-colors">
-                                                        {selectedItems.has(item.id) ? <CheckSquare size={20} className="text-blue-600"/> : <Square size={20}/>}
-                                                    </button>
+                                            {/* 1. 드래그 핸들 & 체크박스 */}
+                                            <div className="w-12 flex items-center justify-center gap-1 shrink-0">
+                                                <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing p-1 rounded hover:bg-gray-100">
+                                                    <GripVertical size={16} />
                                                 </div>
-                                                <button onClick={() => removeItem(item.id)} className="text-gray-300 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors">
-                                                    <Trash2 size={18} />
+                                                <button onClick={() => toggleSelection(item.id)} className="text-gray-300 hover:text-blue-600 transition-colors p-1">
+                                                    {selectedItems.has(item.id) ? <CheckSquare size={18} className="text-blue-600"/> : <Square size={18}/>}
                                                 </button>
                                             </div>
                                             
-                                            <div>
-                                                <h5 className="font-bold text-gray-900 text-lg leading-snug mb-1 line-clamp-2 min-h-[3.5rem] flex items-center">
-                                                    {item.title}
-                                                </h5>
-                                                <div className="flex items-center justify-between mt-2">
-                                                    <span className="text-[11px] text-gray-400 font-mono bg-gray-50 px-1.5 py-0.5 rounded">
-                                                        {item.id}
-                                                    </span>
-                                                    <div className={`px-2 py-0.5 rounded text-[11px] font-bold ${item.price > 0 ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
+                                            {/* 2. 콘텐츠 메인 정보 */}
+                                            <div className="flex-1 min-w-0 py-1 pl-2">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <h5 className="font-bold text-gray-900 text-base truncate group-hover:text-blue-700 transition-colors">
+                                                        {item.title}
+                                                    </h5>
+                                                    {item.aiTargetTitle && (
+                                                        <span className="text-[10px] bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded border border-indigo-100 shrink-0 font-medium">
+                                                            원제: {item.aiTargetTitle}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-2 text-xs">
+                                                    <span className="font-mono text-gray-400 bg-gray-50 px-1.5 rounded">{item.id}</span>
+                                                    <span className={`font-bold ${item.price > 0 ? 'text-gray-500' : 'text-blue-600'}`}>
                                                         {item.price > 0 ? `₩${item.price.toLocaleString()}` : 'Free'}
-                                                    </div>
+                                                    </span>
+                                                    {item.aiReason && (
+                                                        <span className="text-gray-400 truncate max-w-[300px] border-l border-gray-200 pl-2 hidden sm:inline-block">
+                                                            {item.aiReason}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
-    
-                                            <div className="flex flex-wrap gap-1.5 mt-1">
+
+                                            {/* 3. 카테고리/메타 정보 (PC만 노출) */}
+                                            <div className="w-32 flex flex-col gap-1.5 items-center justify-center hidden md:flex shrink-0">
                                                 {item.metaType && (
-                                                    <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold">
+                                                    <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded-full font-bold">
                                                         {item.metaType}
                                                     </span>
                                                 )}
-                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
+                                                <span className={`text-[10px] font-bold text-gray-500 px-2 py-0.5 rounded-full border border-gray-100 ${getTagStyle(item.subCategory).replace('border', 'bg-opacity-50')}`}>
                                                     {item.subCategory}
                                                 </span>
-                                                <span className="text-[10px] bg-gray-50 text-gray-500 border border-gray-100 px-1.5 py-0.5 rounded">{item.category}</span>
                                             </div>
-                                            
-                                            {item.aiReason && (
-                                                <div className="p-3 bg-blue-50/50 rounded-xl border border-blue-100 mt-2">
-                                                    <p className="text-xs text-blue-800 leading-relaxed">
-                                                        {item.aiTargetTitle && (
-                                                            <span className="font-bold text-indigo-700 mr-1 block mb-1">
-                                                                🎯 [{item.aiTargetTitle}]
-                                                            </span>
-                                                        )}
-                                                        {item.aiReason}
-                                                    </p>
-                                                </div>
-                                            )}
 
-                                            <div className="mt-auto pt-4 border-t border-gray-50">
-                                                <div className="flex items-center justify-between gap-2 text-xs">
-                                                    <div className="flex flex-col gap-0.5 w-1/2">
-                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">Start</span>
-                                                        <input 
-                                                            type="datetime-local" 
-                                                            value={item.startDate}
-                                                            onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
-                                                            className="w-full bg-gray-50 border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:ring-1 focus:ring-blue-500 outline-none"
-                                                        />
-                                                    </div>
-                                                    <div className="flex flex-col gap-0.5 w-1/2">
-                                                        <span className="text-[10px] text-gray-400 font-bold uppercase">End</span>
-                                                        <input 
-                                                            type="datetime-local" 
-                                                            value={item.endDate}
-                                                            onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
-                                                            className="w-full bg-gray-50 border border-gray-200 rounded px-1.5 py-1 text-[11px] focus:ring-1 focus:ring-blue-500 outline-none"
-                                                        />
-                                                    </div>
+                                            {/* 4. 날짜 입력 (PC만 노출) */}
+                                            <div className="w-48 flex flex-col gap-1 hidden lg:flex shrink-0">
+                                                <div className="flex items-center justify-between text-[10px] bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                                                    <span className="text-gray-400 font-bold w-6">시작</span>
+                                                    <input 
+                                                        type="datetime-local" 
+                                                        value={item.startDate}
+                                                        onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
+                                                        className="bg-transparent outline-none w-28 text-right font-mono text-gray-600"
+                                                    />
                                                 </div>
+                                                <div className="flex items-center justify-between text-[10px] bg-gray-50 px-2 py-1 rounded border border-gray-100">
+                                                    <span className="text-gray-400 font-bold w-6">종료</span>
+                                                    <input 
+                                                        type="datetime-local" 
+                                                        value={item.endDate}
+                                                        onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
+                                                        className="bg-transparent outline-none w-28 text-right font-mono text-gray-600"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* 5. 삭제 버튼 */}
+                                            <div className="w-10 flex justify-end shrink-0">
+                                                <button onClick={() => removeItem(item.id)} className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                                    <Trash2 size={18} />
+                                                </button>
                                             </div>
                                         </div>
                                     )) : (
-                                        <div className="col-span-full text-center py-20 text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200">
+                                        <div className="py-20 text-center text-gray-400 bg-white rounded-xl border border-dashed border-gray-200">
                                             <AlertTriangle size={32} className="mx-auto mb-3 text-gray-300" />
                                             <p className="font-medium">검색 결과가 없습니다.</p>
                                         </div>
                                     )}
                                 </div>
-                                <div className="h-24"></div>
+                                <div className="h-32"></div>
                             </div>
                         )}
                     </main>
