@@ -459,6 +459,25 @@
                 return { start: formatForInput(start), end: formatForInput(end) };
             };
 
+            // [NEW] 모든 상태를 초기화하는 통합 함수
+            const resetAllStates = () => {
+                setQuery("");
+                setViewState("idle");
+                setResults([]);
+                setOriginalResults([]);
+                setSelectedItems(new Set());
+                
+                // 필터 상태들도 모두 초기화 (이게 핵심!)
+                setSelectedGenres([]);
+                setSelectedMetaTypes([]);
+                setPriceType("all");
+                setIncludeRestricted(false);
+                setMinPrice(0);
+                
+                // 필터 아이콘 상태 끄기
+                setHasActiveFilters(false); 
+            };
+
             const handleSearch = async (inputQuery) => {
                 const targetQuery = inputQuery || query;
                 if (!targetQuery) return;
@@ -642,46 +661,68 @@
                 setResults(filtered);
             };
 
-            // [수정] 필터 적용 핸들러 (대상 이원화 + 무한 로딩 방지)
+            // [수정] 1번(오류), 3번(결과없음) 해결을 위한 필터 로직 개선
             const handleApplyFilterUI = () => {
                 setShowFilters(false); // 팝업 닫기
-                setIsLoadingData(true); // 로딩 시작
+                setIsLoadingData(true); // 로딩 흉내
 
                 setTimeout(() => {
                     try {
-                        // [핵심 Logic] 필터링 대상(Source) 결정
+                        // 검색 중이면 검색 결과(originalSearchResults)에서, 아니면 전체 DB(dbData)에서 필터링
                         let sourceData = dbData; 
-                        
-                        // 검색어(query)가 있고, 원본 검색 결과(originalSearchResults)가 있다면 -> 검색 결과 내에서 필터링
                         if (query.trim() !== "" && originalSearchResults.length > 0) {
                             sourceData = originalSearchResults; 
                         }
 
                         const filtered = sourceData.filter(item => {
-                            if (!includeRestricted && (['성인', '기타', 'adult', 'etc'].some(c => item.category?.includes(c)))) return false;
-                            if (selectedGenres.length > 0 && !selectedGenres.includes(item.subCategory)) return false;
-                            if (selectedMetaTypes.length > 0 && !selectedMetaTypes.includes(item.metaType)) return false;
-                            if (priceType === 'free' && item.price > 0) return false;
+                            // [안전 장치] 데이터가 없어도 에러 안 나게 문자열 변환
+                            const cat = String(item.category || "");
+                            const subCat = String(item.subCategory || "");
+                            const meta = String(item.metaType || "");
+                            const price = Number(item.price || 0);
+
+                            // 1. 성인/기타 제외
+                            // '성인'이나 '기타'가 포함된 경우 제외 (includeRestricted가 false일 때)
+                            if (!includeRestricted) {
+                                if (cat.includes('성인') || cat.includes('기타') || cat.includes('adult') || cat.includes('etc')) return false;
+                            }
+                            
+                            // 2. 장르 필터 (문제의 3번 해결: subCategory가 아니라 category를 비교하거나 둘 다 비교)
+                            if (selectedGenres.length > 0) {
+                                // 카테고리 또는 서브카테고리 중 하나라도 선택된 장르와 일치하면 통과
+                                const isMatch = selectedGenres.some(g => cat.includes(g) || subCat.includes(g));
+                                if (!isMatch) return false;
+                            }
+                            
+                            // 3. 메타 유형 필터
+                            if (selectedMetaTypes.length > 0) {
+                                const isMatch = selectedMetaTypes.some(t => meta.includes(t));
+                                if (!isMatch) return false;
+                            }
+                            
+                            // 4. 가격 필터
+                            if (priceType === 'free' && price > 0) return false;
                             if (priceType === 'paid') {
-                                if (item.price === 0) return false;
-                                if (item.price < minPrice) return false;
+                                if (price === 0) return false;
+                                if (price < minPrice) return false;
                             }
                             return true;
                         });
 
                         setResults(filtered);
                         
+                        // 필터 아이콘 활성화 상태 갱신
                         setHasActiveFilters(
                             includeRestricted || selectedGenres.length > 0 || selectedMetaTypes.length > 0 || priceType !== 'all'
                         );
 
-                        showToast(`${filtered.length.toLocaleString()}건 필터 적용`);
+                        showToast(`필터 적용 완료 (${filtered.length.toLocaleString()}건)`);
 
                     } catch (error) {
-                        console.error("Filter Error:", error);
-                        showToast("오류가 발생했습니다.");
+                        console.error("Filter Logic Error:", error);
+                        showToast("필터 처리 중 오류가 발생했습니다.");
                     } finally {
-                        setIsLoadingData(false); // [중요] 로딩 무조건 끄기
+                        setIsLoadingData(false); 
                     }
                 }, 200); 
             };
@@ -842,7 +883,7 @@
                     <header className="bg-white rounded-3xl px-6 py-4 mb-4 shadow-sm border border-gray-100 sticky top-4 z-40">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                             {/* 1. 로고 영역: 모바일에서도 텍스트 보이게 수정 */}
-                            <div className="flex items-center gap-3 shrink-0" onClick={() => { setViewState("idle"); setQuery(""); }}>
+                            <div className="flex items-center gap-3 shrink-0" onClick={resetAllStates}>
                                 <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white cursor-pointer shadow-blue-200 shadow-md hover:scale-105 transition-transform">
                                     <Sparkles size={20} fill="currentColor" />
                                 </div>
@@ -1168,8 +1209,8 @@
                             <div className="fixed bottom-6 left-0 right-0 z-30 flex justify-center pointer-events-none px-4">
                                 <div className="flex gap-3 w-full max-w-2xl pointer-events-auto animate-slide-up bg-white/90 backdrop-blur-xl p-3 rounded-2xl border border-white/50 shadow-2xl ring-1 ring-gray-200/50">
                                     <button 
-                                        onClick={() => { setViewState("idle"); setQuery(""); }}
-                                        className="w-14 h-14 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 active:scale-95 transition-all"
+                                        onClick={resetAllStates} // 깔끔하게 교체
+                                        className="w-14 h-14 bg-white border ..."
                                         title="초기화"
                                     >
                                         <RotateCcw size={20} />
