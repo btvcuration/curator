@@ -307,7 +307,9 @@
             const [viewState, setViewState] = useState("idle");
             const [dbData, setDbData] = useState([]); 
             const [results, setResults] = useState([]);
-            const [originalResults, setOriginalResults] = useState([]);
+            
+            // [수정] 원본 검색 결과를 저장하는 유일한 State
+            const [originalSearchResults, setOriginalResults] = useState([]); 
 
             const [strategy, setStrategy] = useState("");
             const [blockTitle, setBlockTitle] = useState("");
@@ -342,7 +344,7 @@
                 ? Array.from(new Set(dbData.map(item => item.category).filter(Boolean))) 
                 : [];
 
-            const hasActiveFilters = selectedGenres.length > 0 || priceType !== 'all' || includeRestricted;
+            const hasActiveFilters = selectedGenres.length > 0 || priceType !== 'all' || includeRestricted || selectedMetaTypes.length > 0;
             const allMetaTypes = React.useMemo(() => {
                 if (!dbData) return [];
                 const types = new Set(dbData.map(d => d.metaType).filter(t => t && t.trim() !== ''));
@@ -367,14 +369,12 @@
                     setContext(prev => ({ ...prev, weather: weatherData.weather, temp: weatherData.temp }));
                     
                     // [핵심] 2. 서버에 저장된 '글로벌 트렌드 픽' 가져오기 (비동기)
-                    // 이 호출은 DB 캐시 여부와 상관없이 무조건 실행되어야 3시간 주기를 맞출 수 있음
                     fetch(`${GAS_API_URL}?mode=trends`) 
                         .then(res => res.json())
                         .then(json => {
                             if (json.status === 'success') {
                                 console.log("📅 서버 트렌드 동기화 완료");
                                 setTodaysPicks(json.todaysPicks);
-                                // 서버 Context가 더 정확하므로 덮어씌우되, 날씨는 실측치 유지 노력
                                 setContext(prev => ({ 
                                     ...prev, 
                                     trends: json.context.trends,
@@ -389,7 +389,6 @@
                         const cached = await loadFromIndexedDB();
                         let loadedData = null;
 
-                        // 로컬 캐시 유효하면 서버 요청 안 함 (영화 리스트는 잘 안 변하니까)
                         if (cached && (new Date().getTime() - cached.timestamp < CACHE_EXPIRY_MS)) {
                             loadedData = cached.data;
                             console.log("✅ 로컬 영화 DB 사용");
@@ -410,7 +409,6 @@
 
                     } catch (error) {
                         console.error("DB Load Error:", error);
-                        // 에러 시 더미 데이터라도
                         setDbData([{id:"ERR", title:"데이터 로드 실패", category:"기타", subCategory:"기타", price:0}]);
                     } finally {
                         setIsLoadingData(false);
@@ -453,6 +451,9 @@
                 setViewState("thinking");
                 setIsSearching(true);
                 setResults([]);
+                
+                // [수정] 검색 시작 시 원본 결과 초기화
+                setOriginalResults([]); 
                 setSelectedItems(new Set());
 
                 const currentYear = new Date().getFullYear();
@@ -479,31 +480,26 @@
                     const rawRecs = aiResponse.recommendedTitles || [];
                     const normalizedRecs = rawRecs.map(r => ({
                         rawTitle: typeof r === 'string' ? r : r.title,
-                        // AI 제목도 괄호 제거 후 정규화
                         cleanTitle: String(typeof r === 'string' ? r : r.title).replace(/\(.*\)|\[.*\]/g, '').replace(/\s/g, '').toLowerCase(),
                         reason: r.reason || "AI 추천",
                         targetType: r.type ? r.type.toLowerCase() : (targetQuery.includes("정주행") || targetQuery.includes("드라마") ? "drama" : ""), 
                         keywords: r.keywords || []
                     }));
                     
-                   // --- [Updated Logic: 메타유형 우선 반영] ---
                     const candidates = dbData.map(item => {
                         const rawTitle = item.title || "";
-                        // 1. 제목 전처리
                         const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
                         const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
                         
                         const myCategory = (item.category || "").toLowerCase(); 
                         const mySubCategory = (item.subCategory || "").toLowerCase();
-                        const myMetaType = (item.metaType || "").toLowerCase(); // [NEW] 메타유형 사용
+                        const myMetaType = (item.metaType || "").toLowerCase(); 
 
-                        // [NEW] 키즈/유아 판단 (메타유형 포함해서 더 강력하게 체크)
                         const isKids = myMetaType.includes("키즈") || myMetaType.includes("애니") ||
                                        myCategory.includes("키즈") || mySubCategory.includes("키즈") || 
                                        myCategory.includes("유아") || mySubCategory.includes("뽀로로") || 
                                        mySubCategory.includes("타요") || mySubCategory.includes("핑크퐁");
                         
-                        // [NEW] 카테고리 로직 (메타유형 최우선)
                         const isDbMovie = myMetaType.includes("영화") || 
                                           myCategory.includes("영화") || myCategory.includes("movie") || 
                                           mySubCategory.includes("영화") || mySubCategory.includes("movie");
@@ -529,15 +525,12 @@
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
                     
-                                // [필터 1] 키즈 감점 (-3000)
                                 if (isKids) currentScore -= 3000; 
 
-                                // [필터 2] 타입 불일치 (-2000)
                                 if (isRecSeries && isDbMovie) currentScore -= 2000; 
                                 else if (isRecMovie && isDbSeries) currentScore -= 2000; 
                                 else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) currentScore += 50; 
 
-                                // [필터 3] 제목 길이
                                 if (myTitle === recTitle) {
                                     currentScore += 500; 
                                 } else if (myTitle.length > recTitle.length + 3) {
@@ -552,7 +545,6 @@
                             }
                         }
                     
-                        // 검색어 보너스
                         if (score > 0 && (myTitle.includes(targetQuery.replace(/\s/g, '')) || rawTitle.includes(targetQuery))) {
                             score += 30;
                         }
@@ -571,18 +563,14 @@
                     .filter(item => item.score > 40)
                     .sort((a, b) => b.score - a.score);
                     
-                    // --- [Logic 2: 중복 제거 (제목 기준)] ---
                     const uniqueTitleMap = new Map();
                     
                     candidates.forEach(item => {
-                        // 중복 제거용 키: 괄호와 공백을 모두 제거한 순수 제목
-                        // 예: "8월의 크리스마스[UHD]" -> "8월의크리스마스"
                         const dedupKey = item.title.replace(/\[.*?\]|\(.*?\)/g, "").replace(/\s/g, "").toLowerCase();
 
                         if (!uniqueTitleMap.has(dedupKey)) {
                             uniqueTitleMap.set(dedupKey, item);
                         } else {
-                            // 이미 있는 경우, 제목 길이가 더 짧은(순정) 버전을 우선시
                             const existing = uniqueTitleMap.get(dedupKey);
                             if (item.title.length < existing.title.length) {
                                 uniqueTitleMap.set(dedupKey, item);
@@ -592,8 +580,27 @@
                     
                     const finalCandidates = Array.from(uniqueTitleMap.values()).slice(0, 50); 
 
+                    // [수정] 검색 결과 원본 저장 (필터링 기준점)
                     setOriginalResults(finalCandidates);
-                    applyFilters(finalCandidates);
+                    
+                    // [수정] 현재 필터가 켜져 있다면 즉시 필터링 적용, 아니면 전체 노출
+                    if (hasActiveFilters) {
+                        const filtered = finalCandidates.filter(item => {
+                            if (!includeRestricted && (['성인', '기타', 'adult', 'etc'].some(c => item.category?.includes(c)))) return false;
+                            if (selectedGenres.length > 0 && !selectedGenres.includes(item.subCategory)) return false;
+                            if (selectedMetaTypes.length > 0 && !selectedMetaTypes.includes(item.metaType)) return false;
+                            if (priceType === 'free' && item.price > 0) return false;
+                            if (priceType === 'paid') {
+                                if (item.price === 0) return false;
+                                if (item.price < minPrice) return false;
+                            }
+                            return true;
+                        });
+                        setResults(filtered);
+                    } else {
+                        setResults(finalCandidates);
+                    }
+
                     setViewState("result");
 
                 } catch (e) {
@@ -604,6 +611,7 @@
                     setIsSearching(false);
                 }
             };
+
             const applyFilters = (sourceData = originalResults) => {
                 let filtered = sourceData.filter(item => {
                     if (!includeRestricted && ['성인', '기타', 'adult', 'etc'].includes(item.category)) return false;
@@ -618,42 +626,47 @@
                 setResults(filtered);
             };
 
-            // [수정 포인트 1] 필터 적용 핸들러 (비동기 처리로 UI 멈춤 해결)
+            // [수정] 필터 적용 핸들러 (대상 이원화 + 무한 로딩 방지)
             const handleApplyFilterUI = () => {
-                setShowFilters(false); // 1. 팝업 즉시 닫기
-                setIsLoadingData(true); // 2. 로딩 표시 시작
+                setShowFilters(false); // 팝업 닫기
+                setIsLoadingData(true); // 로딩 시작
 
-                // 3. 0.2초 뒤에 필터링 연산 실행 (렌더링 충돌 방지)
                 setTimeout(() => {
-                    // 검색 결과(originalResults)가 있으면 거기서, 없으면 전체(dbData)에서 필터링
-                    let sourceData = originalResults.length > 0 ? originalResults : dbData;
-                    if (originalResults.length === 0 && query === "") sourceData = dbData;
-
-                    let filtered = sourceData.filter(item => {
-                        // 1. 성인/기타 제외
-                        if (!includeRestricted && (item.category === '성인' || item.category === '기타')) return false;
-                        // 2. 장르 필터
-                        if (selectedGenres.length > 0 && !selectedGenres.includes(item.subCategory)) return false;
-                        // 3. 메타 유형 필터
-                        if (selectedMetaTypes.length > 0 && !selectedMetaTypes.includes(item.metaType)) return false;
-                        // 4. 가격 필터
-                        if (priceType === 'free' && item.price > 0) return false;
-                        if (priceType === 'paid') {
-                            if (item.price === 0) return false;
-                            if (item.price < minPrice) return false;
+                    try {
+                        // [핵심 Logic] 필터링 대상(Source) 결정
+                        let sourceData = dbData; 
+                        
+                        // 검색어(query)가 있고, 원본 검색 결과(originalSearchResults)가 있다면 -> 검색 결과 내에서 필터링
+                        if (query.trim() !== "" && originalSearchResults.length > 0) {
+                            sourceData = originalSearchResults; 
                         }
-                        return true;
-                    });
 
-                    setResults(filtered);
-                    
-                    // 필터 활성화 상태 업데이트
-                    setHasActiveFilters(
-                        includeRestricted || selectedGenres.length > 0 || selectedMetaTypes.length > 0 || priceType !== 'all'
-                    );
+                        const filtered = sourceData.filter(item => {
+                            if (!includeRestricted && (['성인', '기타', 'adult', 'etc'].some(c => item.category?.includes(c)))) return false;
+                            if (selectedGenres.length > 0 && !selectedGenres.includes(item.subCategory)) return false;
+                            if (selectedMetaTypes.length > 0 && !selectedMetaTypes.includes(item.metaType)) return false;
+                            if (priceType === 'free' && item.price > 0) return false;
+                            if (priceType === 'paid') {
+                                if (item.price === 0) return false;
+                                if (item.price < minPrice) return false;
+                            }
+                            return true;
+                        });
 
-                    setIsLoadingData(false); // 로딩 해제
-                    showToast(`${filtered.length.toLocaleString()}건이 필터링되었습니다.`);
+                        setResults(filtered);
+                        
+                        setHasActiveFilters(
+                            includeRestricted || selectedGenres.length > 0 || selectedMetaTypes.length > 0 || priceType !== 'all'
+                        );
+
+                        showToast(`${filtered.length.toLocaleString()}건 필터 적용`);
+
+                    } catch (error) {
+                        console.error("Filter Error:", error);
+                        showToast("오류가 발생했습니다.");
+                    } finally {
+                        setIsLoadingData(false); // [중요] 로딩 무조건 끄기
+                    }
                 }, 200); 
             };
 
@@ -866,80 +879,71 @@
                     <main className="pb-32 min-h-[60vh]">
                         {viewState === "idle" && (
                             <div className="flex flex-col animate-fade-in w-full">
-                                {/* [수정 포인트 2] Trend Pick 섹션: 여백 확보 및 데이터 매핑 수정 */}
-                                <div className="w-full max-w-6xl mx-auto mt-10">
-                                    <div className="flex items-center justify-between px-2 mb-4">
-                                        <div className="flex items-center gap-3">
-                                            <h3 className="text-lg font-extrabold text-gray-900 tracking-tight">
-                                                Today's Trend Pick
-                                            </h3>
+                                {/* [수정] Trend Pick 섹션: 데이터 강제 파싱 적용 */}
+                                <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                    {todaysPicks.map((item, i) => {
+                                        // [강제 파싱 로직]
+                                        let emoji = getRandomEmoji(i);
+                                        let title = "";
+                                        let keywords = [];
+
+                                        if (typeof item === 'object' && item !== null && item.emoji) {
+                                            // 1. 정상적인 객체 데이터 (GAS 업데이트 반영)
+                                            emoji = item.emoji;
+                                            title = item.title;
+                                            keywords = item.keywords || [];
+                                        } else {
+                                            // 2. 문자열 데이터 (캐시된 옛날 데이터 or Fallback) -> 강제 분해
+                                            const str = String(item);
+                                            // 이모지 추출 (유니코드 범위)
+                                            const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
+                                            if (emojiMatch) {
+                                                emoji = emojiMatch[0]; 
+                                            }
+                                            // 제목 정제 (이모지, 마크다운 제거)
+                                            title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+                                                       .replace(/\*\*/g, '').replace(/\"/g, '').trim();
+                                            
+                                            // 키워드가 없으면 기본값
+                                            keywords = ["#트렌드", "#추천"]; 
+                                        }
+
+                                        return (
                                             <button 
-                                                onClick={handleTrendRefresh} 
-                                                disabled={isTrendRefreshing}
-                                                className="p-2 rounded-full bg-white border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 shadow-sm transition-all active:scale-95 group"
+                                                key={i} 
+                                                onClick={() => handleSearch(title)} 
+                                                className="flex flex-col h-full p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-lg hover:-translate-y-1 transition-all group text-left relative overflow-hidden"
                                             >
-                                                <RotateCcw size={14} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
+                                                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full opacity-50 group-hover:from-indigo-50 group-hover:opacity-100 transition-all"></div>
+
+                                                {/* 상단: 파싱된 이모지 */}
+                                                <div className="flex justify-between items-start mb-4 relative z-10">
+                                                    <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
+                                                        {emoji}
+                                                    </div>
+                                                    <div className="p-1.5 rounded-full bg-transparent group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-600 transition-colors">
+                                                        <ArrowRight size={16} />
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* 중단: 정제된 제목 */}
+                                                <div className="flex-1 relative z-10 mb-3">
+                                                    <h4 className="text-[15px] font-bold text-gray-800 leading-snug group-hover:text-indigo-700 transition-colors word-keep-all line-clamp-3">
+                                                        {title}
+                                                    </h4>
+                                                </div>
+
+                                                {/* 하단: 파싱된 태그 */}
+                                                <div className="relative z-10 flex flex-wrap gap-1.5 mt-auto">
+                                                    {keywords.map((k, idx) => (
+                                                        <span key={idx} className="text-[10px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100 font-medium group-hover:border-indigo-100 group-hover:text-indigo-500 transition-colors">
+                                                            {k}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             </button>
-                                        </div>
-                                        <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 flex items-center gap-1">
-                                            <Sparkles size={10} />
-                                            실시간 이슈 반영
-                                        </span>
-                                    </div>
-                                    
-                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                                        {todaysPicks.map((item, i) => {
-                                            // [핵심] GAS 데이터 객체 파싱 (item.emoji, item.keywords 사용)
-                                            const isObj = typeof item === 'object' && item !== null;
-                                            const emoji = isObj && item.emoji ? item.emoji : getRandomEmoji(i);
-                                            const title = isObj && item.title ? item.title : String(item);
-                                            const keywords = isObj && item.keywords ? item.keywords : [];
-                                            // 본문에서 이모지나 마크다운 제거
-                                            const cleanTitle = title.replace(/\*\*/g, '').replace(/\"/g, '').trim();
-
-                                            return (
-                                                <button 
-                                                    key={i} 
-                                                    onClick={() => handleSearch(cleanTitle)} 
-                                                    className="flex flex-col h-full p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-lg hover:-translate-y-1 transition-all group text-left relative overflow-hidden"
-                                                >
-                                                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full opacity-50 group-hover:from-indigo-50 group-hover:opacity-100 transition-all"></div>
-
-                                                    {/* 상단: AI 이모지 */}
-                                                    <div className="flex justify-between items-start mb-4 relative z-10">
-                                                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
-                                                            {emoji}
-                                                        </div>
-                                                        <div className="p-1.5 rounded-full bg-transparent group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-600 transition-colors">
-                                                            <ArrowRight size={16} />
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* 중단: 제목 */}
-                                                    <div className="flex-1 relative z-10 mb-3">
-                                                        <h4 className="text-[15px] font-bold text-gray-800 leading-snug group-hover:text-indigo-700 transition-colors word-keep-all line-clamp-3">
-                                                            {cleanTitle}
-                                                        </h4>
-                                                    </div>
-
-                                                    {/* 하단: 해시태그 */}
-                                                    <div className="relative z-10 flex flex-wrap gap-1.5 mt-auto">
-                                                        {keywords.length > 0 ? (
-                                                            keywords.map((k, idx) => (
-                                                                <span key={idx} className="text-[10px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100 font-medium group-hover:border-indigo-100 group-hover:text-indigo-500 transition-colors">
-                                                                    {k}
-                                                                </span>
-                                                            ))
-                                                        ) : (
-                                                            <span className="text-[10px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
-                                                                #트렌드
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}
@@ -967,7 +971,7 @@
 
                         {/* Result View (어제 버전 디자인으로 복구 + 메타 태그 추가) */}
                         {viewState === "result" && (
-                            <div className="space-y-6 animate-slide-up w-full max-w-5xl mx-auto px-2 mt-8" ref={resultRef}>
+                            <div className="space-y-6 animate-slide-up w-full max-w-5xl mx-auto px-2 mt-12" ref={resultRef}>
                                 
                                 {/* 필터 활성화 상태 표시 */}
                                 {(hasActiveFilters) && (
