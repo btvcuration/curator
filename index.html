@@ -280,6 +280,14 @@
             // [NEW] 트렌드 새로고침 로딩 상태
             const [isTrendRefreshing, setIsTrendRefreshing] = useState(false);
 
+            // [NEW] 카드 색상 팔레트 (파스텔 톤)
+            const CARD_STYLES = [
+                { bg: "bg-orange-50", border: "border-orange-100", hover: "hover:border-orange-300", tag: "text-orange-700 bg-white/80 border-orange-200" },
+                { bg: "bg-purple-50", border: "border-purple-100", hover: "hover:border-purple-300", tag: "text-purple-700 bg-white/80 border-purple-200" },
+                { bg: "bg-blue-50", border: "border-blue-100", hover: "hover:border-blue-300", tag: "text-blue-700 bg-white/80 border-blue-200" },
+                { bg: "bg-pink-50", border: "border-pink-100", hover: "hover:border-pink-300", tag: "text-pink-700 bg-white/80 border-pink-200" }
+            ];
+
             // [수정] 트렌드 새로고침 핸들러 (날씨 보존 로직 추가)
             const handleTrendRefresh = async () => {
                 if (isTrendRefreshing) return; // 중복 클릭 방지
@@ -857,9 +865,10 @@
                             
                             {/* 3. 우측 컨트롤 영역 */}
                             <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0">
-                                {/* 날씨 뱃지 */}
+                                {/* 날씨 뱃지: 모바일에서도 온도 보이게 수정 */}
                                 <div className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold border border-sky-100 whitespace-nowrap">
-                                    {getWeatherIcon(context.weather)} {context.temp}
+                                    {getWeatherIcon(context.weather)} 
+                                    <span>{context.temp}</span> {/* hidden 클래스 제거됨 */}
                                 </div>
 
                                 {/* [수정] 데이터 재설정 버튼: 텍스트 명시 & 붉은색 */}
@@ -910,10 +919,9 @@
                                         </span>
                                     </div>
                                     
-                                    {/* 카드 리스트 영역 (기존 로직 유지) */}
-                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
                                         {todaysPicks.map((item, i) => {
-                                            // [강제 파싱 로직]
+                                            // 데이터 파싱 로직 (기존 유지)
                                             let emoji = getRandomEmoji(i);
                                             let title = "";
                                             let keywords = [];
@@ -928,41 +936,44 @@
                                                 if (emojiMatch) emoji = emojiMatch[0];
                                                 title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
                                                            .replace(/\*\*/g, '').replace(/\"/g, '').trim();
-                                                keywords = ["#트렌드", "#추천"];
+                                                keywords = context.trends.slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
                                             }
+
+                                            // [UI 수정] 색상 및 레이아웃 적용
+                                            const style = CARD_STYLES[i % CARD_STYLES.length];
 
                                             return (
                                                 <button 
                                                     key={i} 
                                                     onClick={() => handleSearch(title)} 
-                                                    className="flex flex-col h-full p-5 rounded-2xl bg-white border border-gray-100 shadow-sm hover:border-indigo-300 hover:shadow-lg hover:-translate-y-1 transition-all group text-left relative overflow-hidden"
+                                                    className={`flex flex-row md:flex-col items-center md:items-start h-full p-4 md:p-5 rounded-2xl border shadow-sm transition-all group text-left relative overflow-hidden ${style.bg} ${style.border} ${style.hover} hover:-translate-y-1 hover:shadow-md`}
                                                 >
-                                                    <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-gray-50 to-transparent rounded-bl-full opacity-50 group-hover:from-indigo-50 group-hover:opacity-100 transition-all"></div>
-                                                    
-                                                    {/* 상단: 이모지 */}
-                                                    <div className="flex justify-between items-start mb-4 relative z-10">
-                                                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-xl group-hover:bg-white group-hover:shadow-sm transition-all border border-slate-100">
+                                                    {/* 상단(모바일:좌측): 이모지 */}
+                                                    <div className="flex-shrink-0 mr-4 md:mr-0 md:mb-4 relative z-10">
+                                                        <div className="w-12 h-12 md:w-10 md:h-10 rounded-xl bg-white flex items-center justify-center text-2xl md:text-xl shadow-sm group-hover:scale-110 transition-transform">
                                                             {emoji}
                                                         </div>
-                                                        <div className="p-1.5 rounded-full bg-transparent group-hover:bg-indigo-50 text-gray-300 group-hover:text-indigo-600 transition-colors">
-                                                            <ArrowRight size={16} />
-                                                        </div>
                                                     </div>
                                                     
-                                                    {/* 중단: 제목 */}
-                                                    <div className="flex-1 relative z-10 mb-3">
-                                                        <h4 className="text-[15px] font-bold text-gray-800 leading-snug group-hover:text-indigo-700 transition-colors word-keep-all line-clamp-3">
+                                                    {/* 중단(모바일:우측): 텍스트 정보 */}
+                                                    <div className="flex-1 min-w-0 relative z-10 flex flex-col justify-center md:justify-start w-full">
+                                                        <h4 className="text-[15px] font-bold text-gray-800 leading-snug break-keep line-clamp-2 md:mb-3">
                                                             {title}
                                                         </h4>
+                                                        
+                                                        {/* 태그 영역 (가독성 개선) */}
+                                                        <div className="hidden md:flex flex-wrap gap-1.5 mt-auto">
+                                                            {keywords.map((k, idx) => (
+                                                                <span key={idx} className={`text-[11px] px-2 py-0.5 rounded border font-bold ${style.tag}`}>
+                                                                    {k}
+                                                                </span>
+                                                            ))}
+                                                        </div>
                                                     </div>
 
-                                                    {/* 하단: 태그 */}
-                                                    <div className="relative z-10 flex flex-wrap gap-1.5 mt-auto">
-                                                        {keywords.map((k, idx) => (
-                                                            <span key={idx} className="text-[10px] text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100 font-medium group-hover:border-indigo-100 group-hover:text-indigo-500 transition-colors">
-                                                                {k}
-                                                            </span>
-                                                        ))}
+                                                    {/* 모바일용 화살표 (우측 끝) */}
+                                                    <div className="md:hidden ml-2 text-gray-300">
+                                                        <ArrowRight size={18} />
                                                     </div>
                                                 </button>
                                             );
