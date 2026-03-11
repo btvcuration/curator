@@ -969,11 +969,12 @@
                                             let emoji = getRandomEmoji(i);
                                             let title = "";
                                             let keywords = [];
-
+                                            let reason = "";
                                             if (typeof item === 'object' && item !== null && item.emoji) {
                                                 emoji = item.emoji;
                                                 title = item.title;
                                                 keywords = item.keywords || [];
+                                                reason = item.reason || "";
                                             } else {
                                                 const str = String(item);
                                                 const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
@@ -1004,9 +1005,16 @@
                                                         <h4 className="text-[15px] font-bold text-gray-800 leading-snug break-keep line-clamp-2 md:mb-3">
                                                             {title}
                                                         </h4>
+                                                        {/* [NEW] AI 추천 사유 (큐레이터 참고용) */}
+                                                        {reason && (
+                                                            <p className="text-[11px] text-gray-500 mt-1.5 mb-2 leading-relaxed line-clamp-2 break-keep">
+                                                                <Sparkles size={10} className="inline mr-1 text-indigo-400" />
+                                                                {reason}
+                                                            </p>
+                                                        )}
                                                         
-                                                        {/* [수정] 태그 영역: hidden 제거하여 모바일에서도 보이게 변경 */}
-                                                        <div className="flex flex-wrap gap-1.5 mt-auto">
+                                                        {/* 태그 영역 (mt-auto를 주어 항상 카드 하단에 붙도록 유지) */}
+                                                        <div className="flex flex-wrap gap-1.5 mt-auto pt-2">
                                                             {keywords.map((k, idx) => (
                                                                 <span key={idx} className={`text-[10px] px-2 py-0.5 rounded border font-bold ${style.tag}`}>
                                                                     {k}
