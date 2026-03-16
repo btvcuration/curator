@@ -999,11 +999,19 @@
                                             let title = "";
                                             let keywords = [];
                                             let reason = "";
+                                            let targetQuery = ""; // [NEW] 백엔드로 보낼 최종 검색어
+                                            
                                             if (typeof item === 'object' && item !== null && item.emoji) {
                                                 emoji = item.emoji;
                                                 title = item.title;
                                                 keywords = item.keywords || [];
                                                 reason = item.reason || "";
+                                                
+                                                // [NEW] targetPerson(예: "장항준")을 기본으로 하되, 없으면 title 괄호 제거
+                                                const baseName = item.targetPerson || item.title.replace(/\[.*?\]|\(.*?\)/g, '').trim();
+                                                // [NEW] 검색어에 기획 의도(reason)를 통째로 붙여서 AI의 문맥 이해를 도움
+                                                targetQuery = reason ? `${baseName} (큐레이션 의도: ${reason})` : baseName;
+                                                
                                             } else {
                                                 const str = String(item);
                                                 const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
@@ -1011,6 +1019,7 @@
                                                 title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
                                                            .replace(/\*\*/g, '').replace(/\"/g, '').trim();
                                                 keywords = context.trends.slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
+                                                targetQuery = title; // [NEW] 텍스트만 있는 경우엔 title 그대로 사용
                                             }
 
                                             // [UI 수정] 색상 및 레이아웃 적용
