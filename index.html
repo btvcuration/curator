@@ -300,7 +300,13 @@
                     const json = await res.json();
                     
                     if (json.status === 'success') {
-                        setTodaysPicks(json.todaysPicks); // 추천 멘트 업데이트
+                        // [수정] 탭 구조 데이터 반영
+                        if (json.tabs) {
+                            setTrendTabs(json.tabs);
+                        } else if (json.todaysPicks) {
+                            // 하위 호환성 (만약 백엔드 반영 전이라면)
+                            setTrendTabs(prev => ({ ...prev, person: json.todaysPicks }));
+                        }
                         
                         // [핵심 수정] 날씨(weather, temp)는 덮어쓰지 않고, 트렌드 키워드만 업데이트!
                         setContext(prev => ({ 
@@ -343,7 +349,13 @@
             const [bulkEndDate, setBulkEndDate] = useState("");
 
             const [context, setContext] = useState({ weather: "날씨 확인 중", temp: "--", trends: [] });
-            const [todaysPicks, setTodaysPicks] = useState([]);
+
+            // [NEW] 탭 관리를 위한 새로운 State
+            const [trendTabs, setTrendTabs] = useState({ person: [], viral: [], onair: [], tpo: [] });
+            const [activeTab, setActiveTab] = useState("person"); // 현재 선택된 탭
+            
+            // [수정] todaysPicks는 이제 상태가 아니라, activeTab에 따라 파생되는 변수
+            const todaysPicks = trendTabs[activeTab] || [];
             const [lastUpdated, setLastUpdated] = useState(null);
 
             const [selectedGenres, setSelectedGenres] = useState([]);
@@ -383,13 +395,18 @@
                     const weatherData = await fetchRealWeather();
                     setContext(prev => ({ ...prev, weather: weatherData.weather, temp: weatherData.temp }));
                     
-                    // [핵심] 2. 서버에 저장된 '글로벌 트렌드 픽' 가져오기 (비동기)
+                    // 2. 서버에 저장된 '글로벌 트렌드 픽' 가져오기 (비동기)
                     fetch(`${GAS_API_URL}?mode=trends`) 
                         .then(res => res.json())
                         .then(json => {
                             if (json.status === 'success') {
                                 console.log("📅 서버 트렌드 & 날씨 동기화 완료");
-                                setTodaysPicks(json.todaysPicks);
+                                // [수정] 탭 구조 데이터 반영
+                                if (json.tabs) {
+                                    setTrendTabs(json.tabs);
+                                } else if (json.todaysPicks) {
+                                    setTrendTabs(prev => ({ ...prev, person: json.todaysPicks }));
+                                }
                                 
                                 // [수정] 이제 GAS가 서울 날씨를 가져오므로, 
                                 // 복잡한 조건문 없이 그냥 서버 데이터로 덮어씌우면 됩니다! (심플!)
@@ -942,25 +959,37 @@
                                 
                                 {/* [복구 완료] 사라졌던 헤더 영역 (제목 + 새로고침 버튼 + 뱃지) */}
                                 <div className="w-full max-w-[1600px] mx-auto mt-10"> 
-                                    <div className="flex items-center justify-between px-2 mb-4">
+                                    <div className="flex items-center justify-between px-2 mb-4 flex-col sm:flex-row items-start sm:items-center gap-3">
                                         <div className="flex items-center gap-3">
-                                            <h3 className="text-lg font-extrabold text-gray-900 tracking-tight">
-                                                Today's Trend Pick
-                                            </h3>
+                                            <h3 className="text-lg font-extrabold text-gray-900 tracking-tight">Today's Trend Pick</h3>
                                             <button 
-                                                onClick={handleTrendRefresh} 
-                                                disabled={isTrendRefreshing}
+                                                onClick={handleTrendRefresh} disabled={isTrendRefreshing}
                                                 className="p-2 rounded-full bg-white border border-gray-200 hover:border-indigo-300 hover:text-indigo-600 shadow-sm transition-all active:scale-95 group"
                                                 title="최신 트렌드로 업데이트"
                                             >
-                                                {/* 회전 애니메이션 적용 */}
                                                 <RotateCcw size={14} className={`text-gray-400 group-hover:text-indigo-600 ${isTrendRefreshing ? "animate-spin" : ""}`} />
                                             </button>
                                         </div>
-                                        <span className="text-[10px] font-bold text-indigo-500 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100 flex items-center gap-1">
-                                            <Sparkles size={10} />
-                                            실시간 이슈 반영
-                                        </span>
+                                    
+                                        {/* [NEW] 탭 메뉴 영역 */}
+                                        <div className="flex bg-gray-100 p-1 rounded-xl w-full sm:w-auto overflow-x-auto scrollbar-hide shrink-0">
+                                            <button 
+                                                onClick={() => setActiveTab('person')}
+                                                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'person' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >🌟 인물 픽</button>
+                                            <button 
+                                                onClick={() => setActiveTab('viral')}
+                                                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'viral' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >🔥 화제성 픽</button>
+                                            <button 
+                                                onClick={() => setActiveTab('onair')}
+                                                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'onair' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >📺 라이브 픽</button>
+                                            <button 
+                                                onClick={() => setActiveTab('tpo')}
+                                                className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'tpo' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                            >☁️ 상황 감성</button>
+                                        </div>
                                     </div>
                                     
                                     <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
