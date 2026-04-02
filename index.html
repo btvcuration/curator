@@ -296,7 +296,7 @@
                 
                 try {
                     // 백엔드에 'refresh_picks' 모드로 요청
-                    const res = await fetch(`${GAS_API_URL}?mode=refresh_picks`);
+                    const res = await fetch(`${GAS_API_URL}?mode=refresh_picks&_t=${new Date().getTime()}`);
                     const json = await res.json();
                     
                     if (json.status === 'success') {
@@ -396,7 +396,7 @@
                     setContext(prev => ({ ...prev, weather: weatherData.weather, temp: weatherData.temp }));
                     
                     // 2. 서버에 저장된 '글로벌 트렌드 픽' 가져오기 (비동기)
-                    fetch(`${GAS_API_URL}?mode=trends`) 
+                    fetch(`${GAS_API_URL}?mode=trends&_t=${new Date().getTime()}`) 
                         .then(res => res.json())
                         .then(json => {
                             if (json.status === 'success') {
