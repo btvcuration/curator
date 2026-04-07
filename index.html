@@ -391,32 +391,26 @@
                 const initApp = async () => {
                     setIsLoadingData(true);
                     
-                    // 1. 화면용 날씨 (빠른 표시)
-                    const weatherData = await fetchRealWeather();
-                    setContext(prev => ({ ...prev, weather: weatherData.weather, temp: weatherData.temp }));
-                    
-                    // 2. 서버에 저장된 '글로벌 트렌드 픽' 가져오기 (비동기)
-                    fetch(`${GAS_API_URL}?mode=trends&_t=${new Date().getTime()}`) 
-                        .then(res => res.json())
-                        .then(json => {
-                            if (json.status === 'success') {
-                                console.log("📅 서버 트렌드 & 날씨 동기화 완료");
-                                // [수정] 탭 구조 데이터 반영
-                                if (json.tabs) {
-                                    setTrendTabs(json.tabs);
-                                } else if (json.todaysPicks) {
-                                    setTrendTabs(prev => ({ ...prev, person: json.todaysPicks }));
-                                }
-                                
-                                // [수정] 이제 GAS가 서울 날씨를 가져오므로, 
-                                // 복잡한 조건문 없이 그냥 서버 데이터로 덮어씌우면 됩니다! (심플!)
-                                setContext(prev => ({ 
-                                    ...prev, 
-                                    ...json.context // 날씨, 시간, 트렌드 모두 최신화
-                                }));
+                    // 2. 서버 트렌드 가져오기
+                    try {
+                        const res = await fetch(`${GAS_API_URL}?mode=trends&_t=${new Date().getTime()}`);
+                        const json = await res.json();
+                        
+                        if (json.status === 'success') {
+                            if (json.tabs) setTrendTabs(json.tabs);
+                            setContext(prev => ({ 
+                                ...prev, 
+                                ...json.context // GAS에서 가져온 정확한 날씨/트렌드 반영
+                            }));
+                            // 마지막 업데이트 시간 기록 (신규)
+                            if (json.timestamp) {
+                                const date = new Date(json.timestamp);
+                                setLastUpdated(`${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`);
                             }
-                        })
-                        .catch(e => console.warn("트렌드 동기화 실패:", e));
+                        }
+                    } catch (e) {
+                        console.warn("트렌드 동기화 실패:", e);
+                    }
 
                     // 3. 무거운 영화 DB 데이터 로드 (여기는 로컬 캐시 적극 활용)
                     try {
@@ -926,10 +920,18 @@
                             
                             {/* 3. 우측 컨트롤 영역 */}
                             <div className="flex items-center justify-end gap-2 sm:gap-3 shrink-0">
-                                {/* 날씨 뱃지: 모바일에서도 온도 보이게 수정 */}
-                                <div className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold border border-sky-100 whitespace-nowrap">
-                                    {getWeatherIcon(context.weather)} 
-                                    <span>{context.temp}</span> {/* hidden 클래스 제거됨 */}
+                                {/* [수정 포인트] 날씨와 동기화 시간을 세트로 묶음 */}
+                                <div className="flex flex-col items-end shrink-0">
+                                    <div className="flex items-center gap-1.5 px-3 py-2 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold border border-sky-100 whitespace-nowrap">
+                                        {getWeatherIcon(context.weather)} 
+                                        <span>{context.temp} {context.weather}</span>
+                                    </div>
+                                    {/* lastUpdated 상태가 있을 때만 아주 작게 표시 */}
+                                    {lastUpdated && (
+                                        <span className="text-[9px] text-gray-400 mt-1 font-medium pr-1">
+                                            최근 동기화 {lastUpdated}
+                                        </span>
+                                    )}
                                 </div>
 
                                 {/* [수정] 데이터 재설정 버튼: 텍스트 명시 & 붉은색 */}
