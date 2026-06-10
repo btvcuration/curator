@@ -13,6 +13,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
     <style>
         .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -90,6 +91,7 @@
         const CalendarClock = (p) => <Icon name="CalendarClock" {...p} />;
         const CheckSquare = (p) => <Icon name="CheckSquare" {...p} />;
         const Square = (p) => <Icon name="Square" {...p} />;
+        
 
         // --- CONFIGURATION ---
         const GAS_API_URL = "https://jolly-sun-635f.alcheminos.workers.dev/"; 
@@ -364,6 +366,10 @@
             const [includeRestricted, setIncludeRestricted] = useState(false); 
             const [selectedMetaTypes, setSelectedMetaTypes] = useState([]);
             const [onlyBtvPlus, setOnlyBtvPlus] = useState(false);
+            // --- 기존 상태 변수들 아래에 추가 ---
+            const [showManualModal, setShowManualModal] = useState(false); // 수동 입력 팝업 노출 여부
+            const [manualIds, setManualIds] = useState(""); // 입력된 ID 텍스트
+            const [targetLibraryId, setTargetLibraryId] = useState(""); // 대상 라이브러리 ID (향후 익스텐션 연동용)
 
             const resultRef = useRef(null);
             
@@ -471,7 +477,6 @@
                 return { start: formatForInput(start), end: formatForInput(end) };
             };
 
-            // [NEW] 모든 상태를 초기화하는 통합 함수
             const resetAllStates = () => {
                 setQuery("");
                 setViewState("idle");
@@ -479,13 +484,16 @@
                 setOriginalResults([]);
                 setSelectedItems(new Set());
                 
-                // 필터 상태들도 모두 초기화 (이게 핵심!)
                 setSelectedGenres([]);
                 setSelectedMetaTypes([]);
                 setPriceType("all");
                 setIncludeRestricted(false);
                 setMinPrice(0);
                 setOnlyBtvPlus(false);
+                
+                // [추가할 부분] 수동 입력 상태 초기화
+                setManualIds("");
+                setTargetLibraryId("");
             };
 
             const handleSearch = async (inputQuery) => {
@@ -793,6 +801,42 @@
                 newSet.delete(id);
                 setSelectedItems(newSet);
             };
+            
+            const handleManualSubmit = () => {
+                if (!manualIds.trim()) {
+                    showToast("콘텐츠 ID를 입력해주세요.");
+                    return;
+                }
+            
+                // 줄바꿈, 쉼표, 띄어쓰기 기준으로 ID를 분리하고 빈 값 제거
+                const parsedIds = Array.from(new Set(manualIds.split(/[\n\s,]+/).filter(id => id.trim() !== "")));
+                const { start, end } = getDefaultDates();
+            
+                // 수동으로 입력된 ID들을 결과 리스트 양식에 맞게 객체로 생성
+                const manualItems = parsedIds.map(id => ({
+                    id: id,
+                    title: `수동 입력 타이틀 (${id})`, // DB 검색을 안 거치므로 임시 타이틀 부여
+                    category: "직접입력",
+                    subCategory: "수동",
+                    metaType: "수동",
+                    price: 0,
+                    startDate: start,
+                    endDate: end,
+                    score: 999, // 항상 상단에 보이도록
+                    isManual: true
+                }));
+            
+                // 기존 검색 결과(results)의 맨 앞에 수동 입력 항목들을 추가
+                setResults(prev => [...manualItems, ...prev]);
+                
+                // 화면을 '결과 보기' 상태로 전환
+                setViewState("result");
+                
+                // 모달 닫기 및 초기화
+                setShowManualModal(false);
+                setManualIds("");
+                showToast(`✅ ${manualItems.length}건의 ID가 목록에 추가되었습니다.`);
+            };
 
             const onDragStart = (e, index) => {
                 dragItem.current = index;
@@ -849,6 +893,50 @@
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
+            };
+            const sendToEUXP = () => {
+                if (results.length === 0) {
+                    showToast("전송할 데이터가 없습니다.");
+                    return;
+                }
+            
+                // 1. EUXP 엑셀 양식 헤더 생성
+                const headers = [
+                    "콘텐츠ID\n(시리즈/에피소드)",
+                    "메뉴편성시작일시\n(YYYY-MM-DD HH:MM)",
+                    "메뉴편성종료일시\n(YYYY-MM-DD HH:MM)"
+                ];
+            
+                const formatForXLSX = (isoStr) => {
+                    if (!isoStr) return "";
+                    return isoStr.replace("T", " ").substring(0, 16);
+                };
+            
+                // 2. 데이터 매핑
+                const data = [headers];
+                results.forEach(r => {
+                    const safeId = String(r.id).replace(/,/g, ""); 
+                    data.push([safeId, formatForXLSX(r.startDate), formatForXLSX(r.endDate)]);
+                });
+            
+                // 3. 엑셀 워크북 생성
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 20 }];
+                XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            
+                // 4. 파일 다운로드 대신 Base64 문자열로 변환 (핵심!)
+                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+            
+                // 5. 익스텐션(content_curator.js)이 들을 수 있도록 메시지 발송
+                const payload = {
+                    targetLibraryId: targetLibraryId || "", // 수동입력 모달에서 입력한 타겟 ID
+                    fileData: wbout,
+                    fileName: `EUXP_일괄편성_${new Date().toISOString().slice(0,10)}.xlsx`
+                };
+            
+                window.postMessage({ type: "SEND_TO_EUXP", data: payload }, "*");
+                showToast("🚀 EUXP로 데이터 전송 중...");
             };
 
             const getWeatherIcon = (weatherStr) => {
@@ -942,6 +1030,15 @@
                                 >
                                     <RotateCcw size={14} />
                                     <span className="text-xs font-bold hidden sm:inline-block">데이터 재설정</span>
+                                </button>
+                                {/* 기존 데이터 재설정 버튼 코드 위치 근처에 추가 */}
+                                <button 
+                                    onClick={() => setShowManualModal(true)} 
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                    title="콘텐츠 ID 직접 입력"
+                                >
+                                    <Edit3 size={14} />
+                                    <span className="text-xs font-bold hidden sm:inline-block">직접 입력</span>
                                 </button>
                                 
                                 <div className="hidden sm:flex items-center gap-1.5 bg-green-50 px-3 py-2 rounded-xl border border-green-100">
@@ -1289,6 +1386,60 @@
                                                 <span>ID 리스트 복사</span>
                                             </>
                                         )}
+                                    </button>
+                                    {/* 기존 복사 버튼 옆에 추가 */}
+                                    <button 
+                                        onClick={sendToEUXP}
+                                        className={`flex-1 h-14 rounded-xl shadow-sm font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 bg-purple-600 text-white hover:bg-purple-700`}
+                                    >
+                                        <Zap size={20} />
+                                        <span>EUXP 바로 주입</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {showManualModal && (
+                            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in p-4" onClick={(e) => e.target === e.currentTarget && setShowManualModal(false)}>
+                                <div className="bg-white w-full max-w-md rounded-3xl p-8 space-y-6 animate-slide-up shadow-2xl">
+                                    <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+                                        <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                            <Edit3 size={24} className="text-indigo-600"/> 콘텐츠 직접 추가
+                                        </h3>
+                                        <button onClick={() => setShowManualModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400"/></button>
+                                    </div>
+                                    
+                                    <div className="space-y-4">
+                                        {/* 향후 크롬 익스텐션 연동을 위한 라이브러리 ID 입력란 */}
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase tracking-wide">
+                                                대상 라이브러리 ID <span className="text-[10px] text-gray-400 font-normal">(선택사항)</span>
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                value={targetLibraryId}
+                                                onChange={(e) => setTargetLibraryId(e.target.value)}
+                                                placeholder="예: LIB20260601"
+                                                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                                            />
+                                        </div>
+                        
+                                        {/* 여러 ID를 한 번에 붙여넣을 수 있는 텍스트 영역 */}
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase tracking-wide flex justify-between">
+                                                <span>시리즈/에피소드 ID 목록</span>
+                                                <span className="text-indigo-500">엑셀 복사/붙여넣기 가능</span>
+                                            </label>
+                                            <textarea 
+                                                value={manualIds}
+                                                onChange={(e) => setManualIds(e.target.value)}
+                                                placeholder="ID를 쉼표, 띄어쓰기, 또는 줄바꿈으로 구분하여 여러 개 입력하세요.&#13;&#10;예)&#13;&#10;CS20000001&#13;&#10;CE2000000001"
+                                                className="w-full h-40 bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-mono resize-none"
+                                            ></textarea>
+                                        </div>
+                                    </div>
+                                    
+                                    <button onClick={handleManualSubmit} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+                                        목록에 추가하기
                                     </button>
                                 </div>
                             </div>
