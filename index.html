@@ -924,13 +924,14 @@
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 20 }];
                 XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-            
+    
                 // 4. 파일 다운로드 대신 Base64 문자열로 변환 (핵심!)
                 const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
             
                 // 5. 익스텐션(content_curator.js)이 들을 수 있도록 메시지 발송
                 const payload = {
-                    targetLibraryId: targetLibraryId || "", // 수동입력 모달에서 입력한 타겟 ID
+                    targetLibraryId: targetLibraryId || "", 
+                    blockTitle: blockTitle, // ★ 이 줄을 추가합니다 (AI가 추천한 블록 타이틀)
                     fileData: wbout,
                     fileName: `EUXP_일괄편성_${new Date().toISOString().slice(0,10)}.xlsx`
                 };
