@@ -408,8 +408,10 @@
                 if (!dbData) return [];
                 const subs = new Set();
                 dbData.forEach(d => {
-                    if (d.products && d.products.trim() !== '') {
-                        d.products.split(',').forEach(p => subs.add(p.trim()));
+                    // 다양한 엑셀 키값(한글/영문) 대응
+                    const prodStr = String(d.products || d.productsName || d['콘텐츠상품명'] || "");
+                    if (prodStr.trim() !== '') {
+                        prodStr.split(',').forEach(p => subs.add(p.trim()));
                     }
                 });
                 return Array.from(subs).filter(Boolean).sort();
@@ -741,16 +743,39 @@
                     // [수정] 검색 결과 원본 저장 (필터링 기준점)
                     setOriginalResults(finalCandidates);
                     
-                    // [수정] 현재 필터가 켜져 있다면 즉시 필터링 적용, 아니면 전체 노출
+                   // [수정] 현재 필터가 켜져 있다면 즉시 필터링 적용, 아니면 전체 노출
                     if (hasActiveFilters) {
                         const filtered = finalCandidates.filter(item => {
-                            if (!includeRestricted && (['성인', '기타', 'adult', 'etc'].some(c => item.category?.includes(c)))) return false;
-                            if (selectedGenres.length > 0 && !selectedGenres.includes(item.subCategory)) return false;
-                            if (selectedMetaTypes.length > 0 && !selectedMetaTypes.includes(item.metaType)) return false;
-                            if (priceType === 'free' && item.price > 0) return false;
+                            const cat = String(item.category || item['카테고리구분_메타'] || "");
+                            const subCat = String(item.subCategory || item['서브카테고리구분(메타)'] || "");
+                            const meta = String(item.metaType || item['콘텐츠메타유형'] || "");
+                            const price = Number(item.price || item.minPrice || item['PPV판매가격'] || 0);
+                            const prod = String(item.products || item.productsName || item['콘텐츠상품명'] || ""); 
+                            const nScreen = String(item.nScreen || item.nscreen || item['N스크린여부'] || "NO").toUpperCase();
+                    
+                            if (!includeRestricted) {
+                                if (cat.includes('성인') || cat === '기타' || cat.includes('adult') || cat.includes('etc')) return false;
+                            }
+                            if (selectedGenres.length > 0) {
+                                const isMatch = selectedGenres.some(g => cat.includes(g) || subCat.includes(g));
+                                if (!isMatch) return false;
+                            }
+                            if (selectedMetaTypes.length > 0) {
+                                const isMatch = selectedMetaTypes.some(t => meta.includes(t));
+                                if (!isMatch) return false;
+                            }
+                            if (priceType === 'free' && price > 0) return false;
                             if (priceType === 'paid') {
-                                if (item.price === 0) return false;
-                                if (item.price < minPrice) return false;
+                                if (price === 0) return false;
+                                if (price < minPrice) return false;
+                            }
+                            if (selectedSubscription !== 'all') {
+                                if (!prod.includes(selectedSubscription)) return false;
+                            }
+                            if (onlyMobile) {
+                                const upperTitle = String(item.title || "").toUpperCase();
+                                const hasNoInTitle = upperTitle.includes("[NO]") || upperTitle.includes("(NO)") || /\bNO\b/.test(upperTitle);
+                                if (nScreen !== "YES" || hasNoInTitle) return false; 
                             }
                             return true;
                         });
@@ -784,30 +809,30 @@
                 setResults(filtered);
             };
 
-            // [최종 수정] 필터 적용 함수 (B tv + 포함 + 에러 코드 완전 제거 + 즉시 실행)
+            // [최종 수정] 필터 적용 함수
             const handleApplyFilterUI = () => {
-                setShowFilters(false); // 팝업 닫기
+                setShowFilters(false); 
                 
-                // 1. 필터링 로직 (로딩 없이 즉시 실행)
                 try {
                     let sourceData = dbData; 
                     
-                    // 검색어(query)가 있고 검색 결과가 있다면 그 안에서 필터링
+                    // 검색 결과가 존재하면 그 안에서 필터링
                     if (query.trim() !== "" && Array.isArray(originalSearchResults) && originalSearchResults.length > 0) {
                         sourceData = originalSearchResults; 
                     }
-
+            
                     const filtered = sourceData.filter(item => {
-                        // [안전 장치] 변수 선언 (prod 포함!)
-                        const cat = String(item.category || "");
-                        const subCat = String(item.subCategory || "");
-                        const meta = String(item.metaType || "");
-                        const price = Number(item.price || 0);
-                        const prod = String(item.products || ""); // [필수] 상품명 변수 선언
-
-                        // 1. 성인/기타 제외
+                        // [안전 장치] 다양한 엑셀 키값(한글/영문) 완벽 대응
+                        const cat = String(item.category || item['카테고리구분_메타'] || "");
+                        const subCat = String(item.subCategory || item['서브카테고리구분(메타)'] || "");
+                        const meta = String(item.metaType || item['콘텐츠메타유형'] || "");
+                        const price = Number(item.price || item.minPrice || item['PPV판매가격'] || 0);
+                        const prod = String(item.products || item.productsName || item['콘텐츠상품명'] || ""); 
+                        const nScreen = String(item.nScreen || item.nscreen || item['N스크린여부'] || "NO").toUpperCase();
+            
+                        // 1. 성인/기타 제외 ('기타방송채널'은 살리기 위해 === '기타' 로 한정)
                         if (!includeRestricted) {
-                            if (cat.includes('성인') || cat.includes('기타') || cat.includes('adult') || cat.includes('etc')) return false;
+                            if (cat.includes('성인') || cat === '기타' || cat.includes('adult') || cat.includes('etc')) return false;
                         }
                         
                         // 2. 장르 필터
@@ -828,32 +853,32 @@
                             if (price === 0) return false;
                             if (price < minPrice) return false;
                         }
-
+            
                         // 5. 특정 월정액 필터
                         if (selectedSubscription !== 'all') {
                             if (!prod.includes(selectedSubscription)) return false;
                         }
-                        
+            
                         // 6. 모바일 제공 여부 필터 (N스크린)
-                        // N스크린여부가 YES이면서, 타이틀에 NO라는 글자가 포함되지 않아야 함
-                        const nScreen = String(item.nScreen || "NO").toUpperCase();
                         if (onlyMobile) {
-                            if (nScreen !== "YES" || String(item.title).toUpperCase().includes("NO")) return false; 
+                            const upperTitle = String(item.title || "").toUpperCase();
+                            // [NO], (NO) 형태이거나 단어 자체가 NO인 경우만 잡아냄 (SNOW 등 방지)
+                            const hasNoInTitle = upperTitle.includes("[NO]") || upperTitle.includes("(NO)") || /\bNO\b/.test(upperTitle);
+                            
+                            if (nScreen !== "YES" || hasNoInTitle) return false; 
                         }
-
+            
                         return true;
                     });
-
-                    // 2. 결과 반영
+            
                     setResults(filtered);
                     
-                    // 3. 결과 메시지
                     if (filtered.length === 0) {
                         showToast("조건에 맞는 콘텐츠가 없습니다.");
                     } else {
                         showToast(`필터 적용 완료 (${filtered.length.toLocaleString()}건)`);
                     }
-
+            
                 } catch (error) {
                     console.error("Filter Logic Error:", error);
                     showToast("필터 처리 중 오류가 발생했습니다.");
