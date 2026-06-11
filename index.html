@@ -346,7 +346,7 @@
             const [targetLibrary, setTargetLibrary] = useState(""); // 명칭 또는 ID
             const [targetRaceId, setTargetRaceId] = useState("");
             const [manualTargetLib, setManualTargetLib] = useState(""); // 수동 다이렉트 전송용
-
+            
             const [copied, setCopied] = useState(false);
             const [showFilters, setShowFilters] = useState(false);
             const [showDateModal, setShowDateModal] = useState(false);
@@ -380,8 +380,11 @@
             const [onlyBtvPlus, setOnlyBtvPlus] = useState(false);
             // --- 기존 상태 변수들 아래에 추가 ---
             const [showManualModal, setShowManualModal] = useState(false); // 수동 입력 팝업 노출 여부
+            const [showPresetModal, setShowPresetModal] = useState(false);
+            const [presetForm, setPresetForm] = useState({ label: "", libId: "", raceId: "" });
             const [manualIds, setManualIds] = useState(""); // 입력된 ID 텍스트
             const [targetLibraryId, setTargetLibraryId] = useState(""); // 대상 라이브러리 ID (향후 익스텐션 연동용)
+            
 
             const resultRef = useRef(null);
             
@@ -419,7 +422,16 @@
             useEffect(() => {
                 const initApp = async () => {
                     setIsLoadingData(true);
-                    
+
+                    try {
+                        const presetRes = await fetch(`${GAS_API_URL}?mode=get_presets&_t=${new Date().getTime()}`);
+                        const presetJson = await presetRes.json();
+                        if (presetJson.status === 'success' && Array.isArray(presetJson.data)) {
+                            setPresetMappings(presetJson.data);
+                        }
+                    } catch (e) {
+                        console.warn("구글 시트 프리셋 로드 실패", e);
+                    }
                     // 2. 서버 트렌드 가져오기
                     try {
                         const res = await fetch(`${GAS_API_URL}?mode=trends&_t=${new Date().getTime()}`);
@@ -498,6 +510,52 @@
                     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
                 };
                 return { start: formatForInput(start), end: formatForInput(end) };
+            };
+            const openPresetModal = (isEdit = false) => {
+                if (isEdit && selectedPreset) {
+                    const target = presetMappings.find(p => p.label === selectedPreset);
+                    if (target) setPresetForm(target);
+                } else {
+                    setPresetForm({ label: "", libId: "", raceId: "" });
+                }
+                setShowPresetModal(true);
+            };
+
+            const handleSavePreset = async () => {
+                if (!presetForm.label || !presetForm.libId) {
+                    showToast("프리셋 이름과 라이브러리 ID는 필수입니다.");
+                    return;
+                }
+                showToast("구글 시트에 프리셋 저장 중...");
+                try {
+                    await fetch(`${GAS_API_URL}?mode=save_preset&label=${encodeURIComponent(presetForm.label)}&libId=${encodeURIComponent(presetForm.libId)}&raceId=${encodeURIComponent(presetForm.raceId)}`);
+                    
+                    // 로컬 상태 즉시 업데이트
+                    setPresetMappings(prev => {
+                        const filtered = prev.filter(p => p.label !== presetForm.label);
+                        return [...filtered, presetForm];
+                    });
+                    setSelectedPreset(presetForm.label);
+                    setShowPresetModal(false);
+                    showToast("✅ 프리셋이 성공적으로 저장되었습니다.");
+                } catch (e) {
+                    showToast("⚠️ 프리셋 저장 실패");
+                }
+            };
+
+            const handleDeletePreset = async () => {
+                if (!selectedPreset) return;
+                if (!window.confirm(`'${selectedPreset}' 프리셋을 정말 삭제하시겠습니까?`)) return;
+                
+                showToast("구글 시트에서 프리셋 삭제 중...");
+                try {
+                    await fetch(`${GAS_API_URL}?mode=delete_preset&label=${encodeURIComponent(selectedPreset)}`);
+                    setPresetMappings(prev => prev.filter(p => p.label !== selectedPreset));
+                    setSelectedPreset("");
+                    showToast("✅ 프리셋이 삭제되었습니다.");
+                } catch (e) {
+                    showToast("⚠️ 삭제 요청 중 오류 발생");
+                }
             };
 
             const resetAllStates = () => {
@@ -1274,65 +1332,47 @@
                                     </div>
                                 )}
 
-                                {/* 연동 타겟 설정 패널 */}
-                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4">
-                                    <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                                        <h4 className="font-bold text-gray-800 flex items-center gap-2">
-                                            <Server size={18} className="text-blue-600"/> 연동 시스템 타겟 설정
+                                {/* 슬림해진 타겟 설정 패널 */}
+                                <div className="bg-white p-4 rounded-2xl border border-gray-200 shadow-sm mb-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h4 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
+                                            <Server size={16} className="text-blue-600"/> 프리셋 선택
                                         </h4>
-                                        <div className="flex items-center gap-2">
-                                            {/* [복구] 구글 시트 현재 설정 저장 버튼 */}
-                                            <button 
-                                                onClick={async () => {
-                                                    if (!targetLibrary || !targetRaceId) { showToast("라이브러리명(ID)과 RACE 블록 ID를 모두 입력해주세요."); return; }
-                                                    const label = window.prompt("저장할 프리셋의 이름을 입력하세요.\n(예: 로맨스_영화_블록)");
-                                                    if (!label || label.trim() === "") return;
-                                                    const newPreset = { label: label.trim(), libId: targetLibrary.trim(), raceId: targetRaceId.trim() };
-                                                    setPresetMappings(prev => [...prev, newPreset]);
-                                                    setSelectedPreset(label.trim());
-                                                    showToast("구글 시트에 프리셋 저장 중...");
-                                                    try {
-                                                        await fetch(`${GAS_API_URL}?mode=save_preset&label=${encodeURIComponent(newPreset.label)}&libId=${encodeURIComponent(newPreset.libId)}&raceId=${encodeURIComponent(newPreset.raceId)}`);
-                                                        showToast("✅ 프리셋이 구글 시트에 성공적으로 저장되었습니다!");
-                                                    } catch (e) { showToast("⚠️ 프리셋 저장 중 오류가 발생했습니다."); }
-                                                }}
-                                                className="text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
-                                            >
-                                                + 현재 설정 저장
-                                            </button>
-                                            <select 
-                                                value={selectedPreset || ""} 
-                                                onChange={(e) => setSelectedPreset(e.target.value)}
-                                                className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-medium text-gray-600"
-                                            >
-                                                <option value="">프리셋 직접 선택...</option>
-                                                {presetMappings && presetMappings.map(p => (
-                                                    <option key={p.label} value={p.label}>{p.label}</option>
-                                                ))}
-                                            </select>
-                                        </div>
+                                        <a 
+                                            href="/assets/euxp-extension.zip" 
+                                            download 
+                                            className="flex items-center gap-1 text-[11px] font-bold bg-green-50 text-green-700 border border-green-200 px-2.5 py-1.5 rounded-lg hover:bg-green-100 transition-colors"
+                                        >
+                                            <Download size={12} /> 확장프로그램 다운로드
+                                        </a>
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">라이브러리명 또는 ID (EUXP)</label>
-                                            <input 
-                                                type="text" 
-                                                value={targetLibrary || ""} 
-                                                onChange={(e) => setTargetLibrary(e.target.value)}
-                                                placeholder="예: NB2000012458 또는 AI_테스트"
-                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">RACE 블록 ID (선택/RACE 연동용)</label>
-                                            <input 
-                                                type="text" 
-                                                value={targetRaceId || ""} 
-                                                onChange={(e) => setTargetRaceId(e.target.value)}
-                                                placeholder="예: RACE_TEST_001"
-                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                                            />
-                                        </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <select 
+                                            value={selectedPreset || ""} 
+                                            onChange={(e) => setSelectedPreset(e.target.value)}
+                                            className="flex-1 bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 font-medium text-gray-700"
+                                        >
+                                            <option value="">프리셋 직접 선택...</option>
+                                            {presetMappings && presetMappings.map(p => (
+                                                <option key={p.label} value={p.label}>{p.label}</option>
+                                            ))}
+                                        </select>
+                                        
+                                        <button onClick={() => openPresetModal(false)} className="px-3 py-2.5 text-xs font-bold bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 whitespace-nowrap">
+                                            + 신규
+                                        </button>
+                                        
+                                        {selectedPreset && (
+                                            <>
+                                                <button onClick={() => openPresetModal(true)} className="px-3 py-2.5 text-xs font-bold bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200">
+                                                    <Edit3 size={14} />
+                                                </button>
+                                                <button onClick={handleDeletePreset} className="px-3 py-2.5 text-xs font-bold bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100">
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1529,7 +1569,7 @@
                                         className={`flex-1 h-14 rounded-xl shadow-sm font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 bg-indigo-600 text-white hover:bg-indigo-700`}
                                     >
                                         <Zap size={20} />
-                                        <span>EUXP & RACE 자동 편성 주입</span>
+                                        <span>EUXP & RACE 반영</span>
                                     </button>
                                 </div>
                             </div>
@@ -1570,6 +1610,52 @@
                                     </div>
                                     <button onClick={handleManualDirectSubmit} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
                                         EUXP 즉시 주입 실행
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                        {/* 👇 이 부분에 프리셋 팝업 코드를 추가하세요! 👇 */}
+                        {showPresetModal && (
+                            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
+                                <div className="bg-white w-full max-w-sm rounded-3xl p-7 space-y-5 shadow-2xl animate-slide-up">
+                                    <div className="flex justify-between items-center border-b border-gray-100 pb-3">
+                                        <h3 className="text-lg font-bold text-gray-800">프리셋 설정</h3>
+                                        <button onClick={() => setShowPresetModal(false)}><X size={20} className="text-gray-400"/></button>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="text-[11px] font-bold text-gray-500 block mb-1">프리셋 이름 (필수)</label>
+                                            <input 
+                                                type="text" value={presetForm.label} 
+                                                onChange={e => setPresetForm({...presetForm, label: e.target.value})}
+                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 bg-gray-50"
+                                                placeholder="예: 로맨스_영화_블록"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-bold text-gray-500 block mb-1">라이브러리 ID (필수)</label>
+                                            <input 
+                                                type="text" value={presetForm.libId} 
+                                                onChange={e => setPresetForm({...presetForm, libId: e.target.value})}
+                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 bg-gray-50"
+                                                placeholder="예: NB2000012458"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-bold text-gray-500 block mb-1">RACE 블록 ID (선택)</label>
+                                            <input 
+                                                type="text" value={presetForm.raceId} 
+                                                onChange={e => setPresetForm({...presetForm, raceId: e.target.value})}
+                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-blue-500 bg-gray-50"
+                                                placeholder="예: RACE_TEST_001"
+                                            />
+                                        </div>
+                                    </div>
+                                    <button 
+                                        onClick={handleSavePreset} 
+                                        className="w-full py-3.5 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-md"
+                                    >
+                                        저장하기
                                     </button>
                                 </div>
                             </div>
