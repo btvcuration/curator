@@ -890,6 +890,46 @@
                 e.preventDefault(); 
             };
 
+            // [NEW] 엑셀 다운로드 함수 추가
+            const downloadExcel = () => {
+                if (results.length === 0) {
+                    showToast("다운로드할 데이터가 없습니다.");
+                    return;
+                }
+                
+                // 1. 엑셀에 들어갈 헤더와 데이터 매핑
+                const headers = ["콘텐츠ID(시리즈/에피소드)", "타이틀", "카테고리", "메뉴편성시작일시", "메뉴편성종료일시"];
+                const data = [headers];
+                
+                // 날짜 포맷팅 함수 (기존 헬퍼 재사용)
+                const formatForXLSX = (isoStr) => (isoStr ? isoStr.replace("T", " ").substring(0, 16) : "");
+                
+                results.forEach(item => {
+                    data.push([
+                        String(item.id).replace(/,/g, ""), 
+                        item.title || "", 
+                        item.category || "", 
+                        formatForXLSX(item.startDate), 
+                        formatForXLSX(item.endDate)
+                    ]);
+                });
+
+                // 2. 엑셀 워크북 및 시트 생성
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                
+                // 3. 열 너비(컬럼 사이즈) 설정
+                ws['!cols'] = [{ wch: 15 }, { wch: 30 }, { wch: 15 }, { wch: 20 }, { wch: 20 }];
+                
+                XLSX.utils.book_append_sheet(wb, ws, "검색결과");
+                
+                // 4. 파일 다운로드 실행
+                const fileName = `AI_Curator_Result_${new Date().toISOString().slice(0,10)}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+                
+                showToast("✅ 엑셀 파일 다운로드가 완료되었습니다.");
+            };
+
             const copyToClipboard = () => {
                 const body = results.map(r => r.id).join('\n');
                 const textArea = document.createElement("textarea");
