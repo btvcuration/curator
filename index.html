@@ -1220,7 +1220,7 @@
                             </div>
                         )}
 
-                        {/* Result View (안전성 강화 및 에러 완벽 차단) */}
+                        {/* Result View (에러 완벽 차단 및 UI 정리 완료) */}
                         {viewState === "result" && (
                             <div className="space-y-6 animate-slide-up w-full max-w-5xl mx-auto px-2 mt-12" ref={resultRef}>
                                 
@@ -1240,16 +1240,37 @@
                                         <h4 className="font-bold text-gray-800 flex items-center gap-2">
                                             <Server size={18} className="text-blue-600"/> 연동 시스템 타겟 설정
                                         </h4>
-                                        <select 
-                                            value={selectedPreset || ""} 
-                                            onChange={(e) => setSelectedPreset(e.target.value)}
-                                            className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-medium text-gray-600"
-                                        >
-                                            <option value="">프리셋 직접 선택...</option>
-                                            {presetMappings && presetMappings.map(p => (
-                                                <option key={p.label} value={p.label}>{p.label}</option>
-                                            ))}
-                                        </select>
+                                        <div className="flex items-center gap-2">
+                                            {/* [복구] 구글 시트 현재 설정 저장 버튼 */}
+                                            <button 
+                                                onClick={async () => {
+                                                    if (!targetLibrary || !targetRaceId) { showToast("라이브러리명(ID)과 RACE 블록 ID를 모두 입력해주세요."); return; }
+                                                    const label = window.prompt("저장할 프리셋의 이름을 입력하세요.\n(예: 로맨스_영화_블록)");
+                                                    if (!label || label.trim() === "") return;
+                                                    const newPreset = { label: label.trim(), libId: targetLibrary.trim(), raceId: targetRaceId.trim() };
+                                                    setPresetMappings(prev => [...prev, newPreset]);
+                                                    setSelectedPreset(label.trim());
+                                                    showToast("구글 시트에 프리셋 저장 중...");
+                                                    try {
+                                                        await fetch(`${GAS_API_URL}?mode=save_preset&label=${encodeURIComponent(newPreset.label)}&libId=${encodeURIComponent(newPreset.libId)}&raceId=${encodeURIComponent(newPreset.raceId)}`);
+                                                        showToast("✅ 프리셋이 구글 시트에 성공적으로 저장되었습니다!");
+                                                    } catch (e) { showToast("⚠️ 프리셋 저장 중 오류가 발생했습니다."); }
+                                                }}
+                                                className="text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-100 transition-colors"
+                                            >
+                                                + 현재 설정 저장
+                                            </button>
+                                            <select 
+                                                value={selectedPreset || ""} 
+                                                onChange={(e) => setSelectedPreset(e.target.value)}
+                                                className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-medium text-gray-600"
+                                            >
+                                                <option value="">프리셋 직접 선택...</option>
+                                                {presetMappings && presetMappings.map(p => (
+                                                    <option key={p.label} value={p.label}>{p.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div>
@@ -1284,9 +1305,10 @@
                                         <div className="flex items-center gap-2 mb-3 text-violet-200 text-xs font-bold uppercase tracking-wider">
                                             <Sparkles size={14} /> 노출될 블록 타이틀 (직접 수정 가능)
                                         </div>
+                                        {/* 중복되어 있던 h3 태그를 완전히 삭제하고 input 하나로 통합 */}
                                         <input 
                                             type="text" 
-                                            value={blockTitle || ""} 
+                                            value={blockTitle || ""}
                                             onChange={(e) => setBlockTitle(e.target.value)}
                                             className="w-full bg-transparent border-b border-white/30 text-3xl font-extrabold leading-tight tracking-tight mb-2 focus:outline-none focus:border-white transition-colors"
                                         />
