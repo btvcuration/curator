@@ -46,21 +46,20 @@
         const Icon = ({ name, size = 24, className, color = "currentColor", ...props }) => {
             const iconData = lucide.icons[name];
             if (!iconData) return null;
+        
+            // 데이터가 정상적인 배열인지 확인하는 방어 코드 추가
+            const childrenArray = Array.isArray(iconData) ? iconData : (iconData[1] || []);
+            if (!Array.isArray(childrenArray)) return null;
+        
             return (
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width={size}
-                    height={size}
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke={color}
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className={className}
-                    {...props}
+                    width={size} height={size} viewBox="0 0 24 24" fill="none"
+                    stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                    className={className} {...props}
                 >
-                    {iconData.map((child, index) => {
+                    {childrenArray.map((child, index) => {
+                        if (!Array.isArray(child)) return null; // 하위 요소 검증
                         const [tag, attrs] = child;
                         return React.createElement(tag, { ...attrs, key: index });
                     })}
@@ -630,8 +629,8 @@
                     }));
                     
                     const candidates = dbData.map(item => {
-                        const rawTitle = item.title || "";
-                        const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
+                        const rawTitle = String(item.title || "");
+                        const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim();
                         const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
                         
                         const myCategory = (item.category || "").toLowerCase(); 
@@ -1289,7 +1288,8 @@
                                                 reason = item.reason || "";
                                                 
                                                 // [NEW] targetPerson(예: "장항준")을 기본으로 하되, 없으면 title 괄호 제거
-                                                const baseName = item.targetPerson || item.title.replace(/\[.*?\]|\(.*?\)/g, '').trim();
+                                                const safeTitle = String(item.title || "");
+                                                const baseName = item.targetPerson || safeTitle.replace(/\[.*?\]|\(.*?\)/g, '').trim();
                                                 // [NEW] 검색어에 기획 의도(reason)를 통째로 붙여서 AI의 문맥 이해를 도움
                                                 targetQuery = reason ? `${baseName} (큐레이션 의도: ${reason})` : baseName;
                                                 
@@ -1299,7 +1299,7 @@
                                                 if (emojiMatch) emoji = emojiMatch[0];
                                                 title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
                                                            .replace(/\*\*/g, '').replace(/\"/g, '').trim();
-                                                keywords = context.trends.slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
+                                                keywords = (context.trends || []).slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
                                                 targetQuery = title; // [NEW] 텍스트만 있는 경우엔 title 그대로 사용
                                             }
 
