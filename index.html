@@ -555,10 +555,11 @@
                     const seasonalInfo = getSeasonalKeywords();
                     setStrategy(aiResponse.strategy || `☁️ ${context.weather} 날씨와 ${seasonalInfo.season} 시즌 감성을 담은 큐레이션`);
                     
-                    // [수정] 이모지 제거하여 기본 블록 타이틀 세팅 (직접 수정 가능)
-                    const generatedTitle = aiResponse.blockTitle || `[${seasonalInfo.season}] ${targetQuery} 추천 리스트`;
-                    setBlockTitle(generatedTitle.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').trim());
-
+                    // [완벽 해결] AI가 배열이나 객체를 던져도 무조건 문자열로 합친 뒤 이모지 제거
+                    const rawTitle = aiResponse.blockTitle || `[${seasonalInfo.season}] ${targetQuery} 추천 리스트`;
+                    const safeTitleStr = Array.isArray(rawTitle) ? rawTitle.join(" ") : String(rawTitle);
+                    
+                    setBlockTitle(safeTitleStr.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').trim());
                     const rawRecs = aiResponse.recommendedTitles || [];
                     const normalizedRecs = rawRecs.map(r => ({
                         rawTitle: typeof r === 'string' ? r : r.title,
