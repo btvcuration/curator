@@ -1283,10 +1283,7 @@
                                             onChange={(e) => setBlockTitle(e.target.value)}
                                             className="w-full bg-transparent border-b border-white/30 text-3xl font-extrabold leading-tight tracking-tight mb-2 focus:outline-none focus:border-white transition-colors"
                                         />
-                                        <h3 className="text-3xl font-extrabold leading-tight tracking-tight mb-2">
-                                            {blockTitle}
-                                        </h3>
-                                        <p className="text-sm text-violet-200 opacity-90 flex items-center gap-1.5">
+                                        <p className="text-sm text-violet-200 opacity-90 flex items-center gap-1.5 mt-2">
                                             <Edit3 size={14} />
                                             {strategy}
                                         </p>
@@ -1355,8 +1352,8 @@
                                                             </span>
                                                         )}
                                                         <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
-                                                            {item.subCategory.includes('영화') ? '🎬 ' : item.subCategory.includes('드라마') ? '📺 ' : ''}
-                                                            {item.subCategory}
+                                                            {(item.subCategory || '').includes('영화') ? '🎬 ' : (item.subCategory || '').includes('드라마') ? '📺 ' : ''}
+                                                            {item.subCategory || '분류없음'}
                                                         </span>
                                                         <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category}</span>
                                                     </div>
