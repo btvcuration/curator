@@ -185,9 +185,13 @@ chrome.runtime.onMessage.addListener(async (request) => {
             
             await delay(1000);
 
-            // 7번 단계(메뉴명 변경 및 저장)가 완전히 제거되었습니다.
-
-            alert("✨ AI Curator 데이터 자동 편성이 완료되었습니다!");
+            // [👇 변경된 부분: 알림 대신 백그라운드로 성공 메시지 전송 👇]
+            console.log("✅ EUXP 편성 완료! 백그라운드에 RACE 연동 요청 전송");
+            
+            chrome.runtime.sendMessage({
+                type: "EUXP_COMPLETED",
+                data: request.data
+            });
 
         } catch (error) {
             console.error("❌ 자동화 에러:", error);
