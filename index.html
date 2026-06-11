@@ -46,20 +46,21 @@
         const Icon = ({ name, size = 24, className, color = "currentColor", ...props }) => {
             const iconData = lucide.icons[name];
             if (!iconData) return null;
-        
-            // 데이터가 정상적인 배열인지 확인하는 방어 코드 추가
-            const childrenArray = Array.isArray(iconData) ? iconData : (iconData[1] || []);
-            if (!Array.isArray(childrenArray)) return null;
-        
             return (
                 <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    width={size} height={size} viewBox="0 0 24 24" fill="none"
-                    stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                    className={className} {...props}
+                    width={size}
+                    height={size}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke={color}
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={className}
+                    {...props}
                 >
-                    {childrenArray.map((child, index) => {
-                        if (!Array.isArray(child)) return null; // 하위 요소 검증
+                    {iconData.map((child, index) => {
                         const [tag, attrs] = child;
                         return React.createElement(tag, { ...attrs, key: index });
                     })}
@@ -629,8 +630,8 @@
                     }));
                     
                     const candidates = dbData.map(item => {
-                        const rawTitle = String(item.title || "");
-                        const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim();
+                        const rawTitle = item.title || "";
+                        const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
                         const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
                         
                         const myCategory = (item.category || "").toLowerCase(); 
@@ -994,6 +995,8 @@
                 try {
                     const zip = new JSZip();
                     
+                    // 💡 확장프로그램을 구성하는 실제 파일 목록을 적어줍니다.
+                    // (버전에 따라 content_race.js 등이 있다면 추가해주세요)
                     const filesToFetch = [
                         "manifest.json",
                         "background.js",
@@ -1001,6 +1004,8 @@
                         "content_curator.js"
                     ];
 
+                    // 각 파일을 fetch로 읽어와서 zip 파일 안에 넣습니다.
+                    // (?t=시간 을 붙여서 항상 브라우저 캐시를 무시하고 최신 코드를 가져옵니다)
                     for (const fileName of filesToFetch) {
                         const response = await fetch(`./assets/${fileName}?t=${new Date().getTime()}`);
                         if (!response.ok) throw new Error(`${fileName} 파일을 찾을 수 없습니다.`);
@@ -1009,6 +1014,7 @@
                         zip.file(fileName, fileContent);
                     }
 
+                    // Zip 파일 생성 및 브라우저 다운로드 트리거
                     const blob = await zip.generateAsync({ type: "blob" });
                     const downloadUrl = URL.createObjectURL(blob);
                     
@@ -1021,12 +1027,6 @@
                     URL.revokeObjectURL(downloadUrl);
                     
                     showToast("✅ 최신 버전 다운로드 완료!");
-                    
-                    // 👇 [추가된 부분] 새로고침 안내 팝업
-                    setTimeout(() => {
-                        alert("📦 확장프로그램이 다운로드되었습니다.\n\n크롬 확장프로그램 관리자(chrome://extensions)에 압축을 풀어 적용하신 뒤, 꼭 이 화면에서 키보드 [F5]를 눌러 새로고침을 해주세요!");
-                    }, 500);
-
                 } catch (e) {
                     console.error("Extension Download Error:", e);
                     showToast("⚠️ 다운로드 실패: " + e.message);
@@ -1072,28 +1072,18 @@
                     return;
                 }
                 
-                // 👇 [추가된 부분] 작업 시작 전 로그인 및 주의사항 경고창
-                const isConfirmed = window.confirm(
-                    "🚨 EUXP & RACE 자동 편성을 시작합니다.\n\n" +
-                    "1. EUXP와 RACE(해당 시) 어드민에 미리 로그인되어 있는지 확인해주세요.\n" +
-                    "2. 작업이 시작되면 화면이 스스로 움직입니다. '완료' 팝업이 뜰 때까지 마우스나 키보드 조작을 절대 하지 마세요!\n\n" +
-                    "자동화 작업을 진행하시겠습니까?"
-                );
-                
-                if (!isConfirmed) return; // 취소를 누르면 중단
-                // 👆 ----------------------------------------------------
-
                 const wbout = getExcelBase64(results);
                 const payload = {
                     targetLibraryId: targetLibrary.trim(), 
-                    targetRaceId: targetRaceId.trim(),
-                    blockTitle: blockTitle.trim(),
+                    targetRaceId: targetRaceId.trim(), // RACE ID 전달
+                    blockTitle: blockTitle.trim(), // 수정된 블록 타이틀 전달
                     fileData: wbout,
                     fileName: `EUXP_일괄편성_${new Date().toISOString().slice(0,10)}.xlsx`
                 };
                 window.postMessage({ type: "SEND_TO_EUXP", data: payload }, "*");
                 showToast("🚀 EUXP & RACE 연동 전송 중...");
             };
+
             // 수동 다이렉트 전송 (리스트 추가 없이 단독 실행, RACE 관여 안 함)
             const handleManualDirectSubmit = () => {
                 if (!manualTargetLib.trim() || !manualIds.trim()) {
@@ -1261,6 +1251,10 @@
                                                 onClick={() => setActiveTab('tpo')}
                                                 className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'tpo' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                             >☁️ 상황 감성</button>
+                                            <button 
+                                                    onClick={() => setActiveTab('tpo')}
+                                                    className={`flex-1 sm:flex-none px-4 py-2 text-sm font-bold rounded-lg whitespace-nowrap transition-all ${activeTab === 'tpo' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                                >☁️ 상황 감성</button>
                                             </div>
                                             {/* 첫 화면으로 옮겨온 확장프로그램 다운로드 버튼 */}
                                             <button 
@@ -1288,8 +1282,7 @@
                                                 reason = item.reason || "";
                                                 
                                                 // [NEW] targetPerson(예: "장항준")을 기본으로 하되, 없으면 title 괄호 제거
-                                                const safeTitle = String(item.title || "");
-                                                const baseName = item.targetPerson || safeTitle.replace(/\[.*?\]|\(.*?\)/g, '').trim();
+                                                const baseName = item.targetPerson || item.title.replace(/\[.*?\]|\(.*?\)/g, '').trim();
                                                 // [NEW] 검색어에 기획 의도(reason)를 통째로 붙여서 AI의 문맥 이해를 도움
                                                 targetQuery = reason ? `${baseName} (큐레이션 의도: ${reason})` : baseName;
                                                 
@@ -1299,7 +1292,7 @@
                                                 if (emojiMatch) emoji = emojiMatch[0];
                                                 title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
                                                            .replace(/\*\*/g, '').replace(/\"/g, '').trim();
-                                                keywords = (context.trends || []).slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
+                                                keywords = context.trends.slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
                                                 targetQuery = title; // [NEW] 텍스트만 있는 경우엔 title 그대로 사용
                                             }
 
@@ -1473,25 +1466,36 @@
                                             onDragEnd={onDragEnd}
                                             onDragOver={onDragOver}
                                         >
-                                            <div className="flex flex-col xl:flex-row xl:items-center gap-3 w-full">
-                                                {/* 좌측: 드래그 핸들, 체크박스, 타이틀, 메타 정보 */}
-                                                <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                                                    <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing shrink-0 flex flex-col items-center">
-                                                        <GripVertical size={16} />
+                                            <div className="flex items-start gap-3">
+                                                {/* 좌측: 드래그 핸들 & 체크박스 */}
+                                                <div className="flex flex-col items-center gap-2 pt-1">
+                                                    <div className="cursor-grab text-gray-300 hover:text-gray-500 active:cursor-grabbing">
+                                                        <GripVertical size={18} />
                                                     </div>
-                                                    <button onClick={() => toggleSelection(item.id)} className="text-gray-400 hover:text-blue-500 shrink-0">
+                                                    <button onClick={() => toggleSelection(item.id)} className="text-gray-400 hover:text-blue-500">
                                                         {selectedItems.has(item.id) ? <CheckSquare size={18} className="text-blue-500"/> : <Square size={18}/>}
                                                     </button>
-            
-                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 ml-1 flex-1 min-w-0">
-                                                        <h5 className="font-bold text-gray-900 text-[14px] leading-tight break-keep">
-                                                            {item.title || '제목 없음'}
-                                                        </h5>
-                                                        <span className="text-[10px] text-gray-400 font-mono">
-                                                            {item.id}
-                                                        </span>
-            
-                                                        {/* 태그들을 타이틀 바로 우측에 일렬로 나열 */}
+                                                </div>
+        
+                                                {/* 중앙: 콘텐츠 정보 */}
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-start mb-1 gap-2">
+                                                        <div className="flex-1">
+                                                            <h5 className="font-bold text-gray-900 text-base break-keep leading-tight">
+                                                                {item.title || '제목 없음'}
+                                                            </h5>
+                                                            {/* 잘렸던 span 태그 완벽 복구 */}
+                                                            <span className="text-[10px] text-gray-400 font-mono mt-0.5 block">
+                                                                {item.id}
+                                                            </span>
+                                                        </div>
+                                                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${Number(item.price || 0) > 0 ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                            {Number(item.price || 0) > 0 ? `₩${Number(item.price).toLocaleString()}` : '무료'}
+                                                        </div>
+                                                    </div>
+        
+                                                    {/* 메타 태그 & 카테고리 (String 감싸기로 숫자형 데이터 렌더링 에러 완벽 차단) */}
+                                                    <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
                                                         {item.metaType && (
                                                             <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded font-bold">
                                                                 {item.metaType}
@@ -1505,53 +1509,51 @@
                                                             {item.category || '기타'}
                                                         </span>
                                                     </div>
-                                                </div>
-            
-                                                {/* 우측: 날짜, 가격, 삭제 (한 줄로 통합) */}
-                                                <div className="flex items-center gap-2 shrink-0 bg-gray-50 p-1.5 rounded-xl border border-gray-100 ml-8 xl:ml-0 w-fit">
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-gray-400 font-bold text-[10px]">시작</span>
-                                                        <input 
-                                                            type="datetime-local" 
-                                                            value={item.startDate || ''}
-                                                            onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
-                                                            className="bg-white border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500 w-[125px] text-gray-600 font-mono text-[10px]"
-                                                        />
+                                                    
+                                                    {/* AI 추천 사유 */}
+                                                    {item.aiReason && (
+                                                        <div className="mb-3 p-2 bg-blue-50 rounded-lg border border-blue-100">
+                                                            <p className="text-xs text-blue-700 font-medium line-clamp-3 leading-relaxed">
+                                                                {item.aiTargetTitle && (
+                                                                    <span className="font-bold text-indigo-800 mr-1">
+                                                                        [{item.aiTargetTitle}]
+                                                                    </span>
+                                                                )}
+                                                                {item.aiReason}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* 날짜 입력 */}
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs bg-gray-50 p-2 rounded-lg">
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-gray-400 font-bold">시작</span>
+                                                            <input 
+                                                                type="datetime-local" 
+                                                                value={item.startDate || ''}
+                                                                onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
+                                                                className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-32 text-gray-600 font-mono text-[11px]"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <span className="text-gray-400 font-bold">종료</span>
+                                                            <input 
+                                                                type="datetime-local" 
+                                                                value={item.endDate || ''}
+                                                                onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
+                                                                className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-32 text-gray-600 font-mono text-[11px]"
+                                                            />
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center gap-1">
-                                                        <span className="text-gray-400 font-bold text-[10px]">종료</span>
-                                                        <input 
-                                                            type="datetime-local" 
-                                                            value={item.endDate || ''}
-                                                            onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
-                                                            className="bg-white border border-gray-200 rounded px-1.5 py-1 focus:outline-none focus:border-blue-500 w-[125px] text-gray-600 font-mono text-[10px]"
-                                                        />
-                                                    </div>
-                                                    <div className={`px-2 py-1 rounded-md text-[11px] font-bold whitespace-nowrap ml-1 ${Number(item.price || 0) > 0 ? 'bg-slate-200 text-slate-700' : 'bg-blue-100 text-blue-600'}`}>
-                                                        {Number(item.price || 0) > 0 ? `₩${Number(item.price).toLocaleString()}` : '무료'}
-                                                    </div>
-                                                    <button 
-                                                        onClick={() => removeItem(item.id)}
-                                                        className="p-1 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors ml-1"
-                                                    >
-                                                        <Trash2 size={14} />
-                                                    </button>
                                                 </div>
-                                            </div>
-            
-                                            {/* AI 추천 사유 (있는 경우만 하단에 슬림하게 노출) */}
-                                            {item.aiReason && (
-                                                <div className="ml-8 mt-1 p-1.5 bg-blue-50/50 rounded-lg border border-blue-100/50">
-                                                    <p className="text-[11px] text-blue-700 font-medium line-clamp-2 leading-relaxed">
-                                                        {item.aiTargetTitle && (
-                                                            <span className="font-bold text-indigo-800 mr-1">
-                                                                [{item.aiTargetTitle}]
-                                                            </span>
-                                                        )}
-                                                        {item.aiReason}
-                                                    </p>
-                                                </div>
-                                            )}
+        
+                                                {/* 우측: 삭제 버튼 */}
+                                                <button 
+                                                    onClick={() => removeItem(item.id)}
+                                                    className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors self-start"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </div>
                                         </div>
                                     )) : (
