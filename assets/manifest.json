@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
-  "name": "EUXP AI 큐레이터 연동기",
-  "version": "1.0",
-  "description": "AI Curator 데이터를 엑셀 다운로드 없이 EUXP 어드민에 바로 주입합니다.",
+  "name": "EUXP & RACE AI 큐레이터 연동기",
+  "version": "2.0",
+  "description": "AI Curator 데이터를 EUXP에 주입하고 RACE 블록명 변경 및 빌드까지 원스톱으로 처리합니다.",
   "permissions": [
     "tabs"
   ],
   "host_permissions": [
     "https://euxp.skbroadband.com/*",
+    "http://1.255.152.46:5630/*",
     "<all_urls>"
   ],
   "background": {
@@ -21,6 +22,10 @@
     {
       "matches": ["https://euxp.skbroadband.com/*"],
       "js": ["content_euxp.js"]
+    },
+    {
+      "matches": ["http://1.255.152.46:5630/*"],
+      "js": ["content_race.js"]
     }
   ]
 }
