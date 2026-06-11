@@ -1328,23 +1328,23 @@
                                                     </button>
                                                 </div>
         
-                                                {/* 중앙: 콘텐츠 정보 */}
+                                                {/* 중앙: 콘텐츠 정보 (완벽 방탄 처리 완료) */}
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex justify-between items-start mb-1 gap-2">
                                                         <div className="flex-1">
                                                             <h5 className="font-bold text-gray-900 text-base break-keep leading-tight">
-                                                                {item.title}
+                                                                {item.title || '제목 없음'}
                                                             </h5>
                                                             <span className="text-[10px] text-gray-400 font-mono mt-0.5 block">
                                                                 {item.id}
                                                             </span>
                                                         </div>
-                                                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${item.price > 0 ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
-                                                            {item.price > 0 ? `₩${item.price.toLocaleString()}` : '무료'}
+                                                        <div className={`px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${Number(item.price || 0) > 0 ? 'bg-slate-100 text-slate-600' : 'bg-blue-100 text-blue-600'}`}>
+                                                            {Number(item.price || 0) > 0 ? `₩${Number(item.price).toLocaleString()}` : '무료'}
                                                         </div>
                                                     </div>
         
-                                                    {/* 메타 태그 & 카테고리 */}
+                                                    {/* 메타 태그 & 카테고리 (에러의 주범이었던 곳 ➡️ 완벽 해결) */}
                                                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-2 flex-wrap">
                                                         {item.metaType && (
                                                             <span className="text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded font-bold">
@@ -1355,7 +1355,9 @@
                                                             {(item.subCategory || '').includes('영화') ? '🎬 ' : (item.subCategory || '').includes('드라마') ? '📺 ' : ''}
                                                             {item.subCategory || '분류없음'}
                                                         </span>
-                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category || '기타'}</span>
+                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">
+                                                            {item.category || '기타'}
+                                                        </span>
                                                     </div>
                                                     
                                                     {/* AI 추천 사유 */}
@@ -1378,7 +1380,7 @@
                                                             <span className="text-gray-400 font-bold">시작</span>
                                                             <input 
                                                                 type="datetime-local" 
-                                                                value={item.startDate}
+                                                                value={item.startDate || ''}
                                                                 onChange={(e) => handleDateChange(item.id, 'startDate', e.target.value)}
                                                                 className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-32 text-gray-600 font-mono text-[11px]"
                                                             />
@@ -1387,7 +1389,7 @@
                                                             <span className="text-gray-400 font-bold">종료</span>
                                                             <input 
                                                                 type="datetime-local" 
-                                                                value={item.endDate}
+                                                                value={item.endDate || ''}
                                                                 onChange={(e) => handleDateChange(item.id, 'endDate', e.target.value)}
                                                                 className="bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:border-blue-500 w-32 text-gray-600 font-mono text-[11px]"
                                                             />
