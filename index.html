@@ -91,6 +91,7 @@
         const CalendarClock = (p) => <Icon name="CalendarClock" {...p} />;
         const CheckSquare = (p) => <Icon name="CheckSquare" {...p} />;
         const Square = (p) => <Icon name="Square" {...p} />;
+        const Server = (p) => <Icon name="Server" {...p} />;
         
 
         // --- CONFIGURATION ---
@@ -335,6 +336,17 @@
 
             const [strategy, setStrategy] = useState("");
             const [blockTitle, setBlockTitle] = useState("");
+            
+            // [NEW] 프리셋 및 타겟 ID 관리
+            const [presetMappings, setPresetMappings] = useState([
+                { label: "테스트 블록 A (김무열)", libId: "NB2000012458", raceId: "RACE_TEST_001" },
+                { label: "테스트 블록 B", libId: "LIB_TEST_02", raceId: "RACE_TEST_002" }
+            ]);
+            const [selectedPreset, setSelectedPreset] = useState("");
+            const [targetLibrary, setTargetLibrary] = useState(""); // 명칭 또는 ID
+            const [targetRaceId, setTargetRaceId] = useState("");
+            const [manualTargetLib, setManualTargetLib] = useState(""); // 수동 다이렉트 전송용
+
             const [copied, setCopied] = useState(false);
             const [showFilters, setShowFilters] = useState(false);
             const [showDateModal, setShowDateModal] = useState(false);
@@ -383,6 +395,17 @@
                 const types = new Set(dbData.map(d => d.metaType).filter(t => t && t.trim() !== ''));
                 return Array.from(types).sort();
             }, [dbData]);
+
+            // [NEW] 프리셋 선택 시 자동 반영
+            useEffect(() => {
+                if (selectedPreset) {
+                    const preset = presetMappings.find(p => p.label === selectedPreset);
+                    if (preset) {
+                        setTargetLibrary(preset.libId);
+                        setTargetRaceId(preset.raceId);
+                    }
+                }
+            }, [selectedPreset]);
 
             useEffect(() => {
                 if (isLoadingData) {
@@ -493,7 +516,10 @@
                 
                 // [추가할 부분] 수동 입력 상태 초기화
                 setManualIds("");
-                setTargetLibraryId("");
+                setManualTargetLib("");
+                setTargetLibrary("");
+                setTargetRaceId("");
+                setSelectedPreset("");
             };
 
             const handleSearch = async (inputQuery) => {
@@ -528,7 +554,10 @@
 
                     const seasonalInfo = getSeasonalKeywords();
                     setStrategy(aiResponse.strategy || `☁️ ${context.weather} 날씨와 ${seasonalInfo.season} 시즌 감성을 담은 큐레이션`);
-                    setBlockTitle(aiResponse.blockTitle || `[${seasonalInfo.season}] ${targetQuery} 추천 리스트`);
+                    
+                    // [수정] 이모지 제거하여 기본 블록 타이틀 세팅 (직접 수정 가능)
+                    const generatedTitle = aiResponse.blockTitle || `[${seasonalInfo.season}] ${targetQuery} 추천 리스트`;
+                    setBlockTitle(generatedTitle.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '').trim());
 
                     const rawRecs = aiResponse.recommendedTitles || [];
                     const normalizedRecs = rawRecs.map(r => ({
@@ -873,79 +902,69 @@
                 setTimeout(() => setCopied(false), 2000);
             };
 
-            const downloadExcel = () => {
-                const formatForCSV = (isoStr) => {
-                    return isoStr.replace("T", " ") + ":00";
-                };
-                let csvContent = "시리즈ID,편성시작일시,편성종료일시\n";
-                results.forEach(r => {
-                    const safeId = String(r.id).replace(/,/g, ""); 
-                    const start = formatForCSV(r.startDate);
-                    const end = formatForCSV(r.endDate);
-                    csvContent += `${safeId},${start},${end}\n`;
+            // 엑셀 Base64 추출 헬퍼 (AI목록 & 수동입력 공용)
+            const getExcelBase64 = (itemsList) => {
+                const headers = ["콘텐츠ID\n(시리즈/에피소드)", "메뉴편성시작일시\n(YYYY-MM-DD HH:MM)", "메뉴편성종료일시\n(YYYY-MM-DD HH:MM)"];
+                const formatForXLSX = (isoStr) => (isoStr ? isoStr.replace("T", " ").substring(0, 16) : "");
+                const data = [headers];
+                itemsList.forEach(r => {
+                    data.push([String(r.id).replace(/,/g, ""), formatForXLSX(r.startDate), formatForXLSX(r.endDate)]);
                 });
-                const BOM = '\uFEFF';
-                const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.setAttribute('download', `편성업로드_${new Date().toISOString().slice(0,10)}_${query}.csv`);
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
+                const wb = XLSX.utils.book_new();
+                const ws = XLSX.utils.aoa_to_sheet(data);
+                ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 20 }];
+                XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+                return XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
             };
+
+            // AI 메인 결과 전송 (EUXP 라이브러리 + RACE 업데이트)
             const sendToEUXP = () => {
                 if (results.length === 0) {
                     showToast("전송할 데이터가 없습니다.");
                     return;
                 }
-            
-                // [NEW] 전송 전 라이브러리 ID 입력받기
-                const inputId = window.prompt("업데이트할 대상 '라이브러리 ID'를 입력하세요.\n(예: NB2000012458)");
-                
-                // 취소를 누르거나 빈 칸으로 확인을 누른 경우 중단
-                if (!inputId || inputId.trim() === "") {
-                    showToast("라이브러리 ID 입력이 취소되었습니다.");
+                if (!targetLibrary) {
+                    showToast("타겟 라이브러리 명칭 또는 ID를 입력해주세요.");
                     return;
                 }
-            
-                // 1. EUXP 엑셀 양식 헤더 생성
-                const headers = [
-                    "콘텐츠ID\n(시리즈/에피소드)",
-                    "메뉴편성시작일시\n(YYYY-MM-DD HH:MM)",
-                    "메뉴편성종료일시\n(YYYY-MM-DD HH:MM)"
-                ];
-            
-                const formatForXLSX = (isoStr) => {
-                    if (!isoStr) return "";
-                    return isoStr.replace("T", " ").substring(0, 16);
-                };
-            
-                // 2. 데이터 매핑
-                const data = [headers];
-                results.forEach(r => {
-                    const safeId = String(r.id).replace(/,/g, ""); 
-                    data.push([safeId, formatForXLSX(r.startDate), formatForXLSX(r.endDate)]);
-                });
-            
-                // 3. 엑셀 워크북 생성
-                const wb = XLSX.utils.book_new();
-                const ws = XLSX.utils.aoa_to_sheet(data);
-                ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 20 }];
-                XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-            
-                // 4. 파일 다운로드 대신 Base64 문자열로 변환
-                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
-            
-                // 5. 익스텐션으로 메시지 발송 (방금 입력받은 ID 사용)
+                
+                const wbout = getExcelBase64(results);
                 const payload = {
-                    targetLibraryId: inputId.trim(), 
+                    targetLibraryId: targetLibrary.trim(), 
+                    targetRaceId: targetRaceId.trim(), // RACE ID 전달
+                    blockTitle: blockTitle.trim(), // 수정된 블록 타이틀 전달
                     fileData: wbout,
                     fileName: `EUXP_일괄편성_${new Date().toISOString().slice(0,10)}.xlsx`
                 };
-            
                 window.postMessage({ type: "SEND_TO_EUXP", data: payload }, "*");
-                showToast("🚀 EUXP로 데이터 전송 중...");
+                showToast("🚀 EUXP & RACE 연동 전송 중...");
+            };
+
+            // 수동 다이렉트 전송 (리스트 추가 없이 단독 실행, RACE 관여 안 함)
+            const handleManualDirectSubmit = () => {
+                if (!manualTargetLib.trim() || !manualIds.trim()) {
+                    showToast("라이브러리명(또는 ID)와 콘텐츠 ID를 모두 입력해주세요.");
+                    return;
+                }
+                
+                const parsedIds = Array.from(new Set(manualIds.split(/[\n\s,]+/).filter(id => id.trim() !== "")));
+                const { start, end } = getDefaultDates();
+                const manualItems = parsedIds.map(id => ({ id, startDate: start, endDate: end }));
+                
+                const wbout = getExcelBase64(manualItems);
+                const payload = {
+                    targetLibraryId: manualTargetLib.trim(),
+                    targetRaceId: "", // 수동 케이스는 RACE 연동 제외
+                    blockTitle: "",
+                    fileData: wbout,
+                    fileName: `EUXP_수동다이렉트_${new Date().toISOString().slice(0,10)}.xlsx`
+                };
+                
+                window.postMessage({ type: "SEND_TO_EUXP", data: payload }, "*");
+                setShowManualModal(false);
+                setManualIds("");
+                setManualTargetLib("");
+                showToast(`🚀 ${manualItems.length}건 수동 다이렉트 업데이트 실행!`);
             };
             const getWeatherIcon = (weatherStr) => {
                 if (!weatherStr) return <Sun size={12} />;
@@ -1043,10 +1062,9 @@
                                 <button 
                                     onClick={() => setShowManualModal(true)} 
                                     className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-indigo-700 hover:bg-indigo-100 transition-colors"
-                                    title="콘텐츠 ID 직접 입력"
                                 >
-                                    <Edit3 size={14} />
-                                    <span className="text-xs font-bold hidden sm:inline-block">직접 입력</span>
+                                    <Server size={14} />
+                                    <span className="text-xs font-bold hidden sm:inline-block">수동 다이렉트 업데이트</span>
                                 </button>
                                 
                                 <div className="hidden sm:flex items-center gap-1.5 bg-green-50 px-3 py-2 rounded-xl border border-green-100">
@@ -1205,7 +1223,7 @@
                         {viewState === "result" && (
                             <div className="space-y-6 animate-slide-up w-full max-w-5xl mx-auto px-2 mt-12" ref={resultRef}>
                                 
-                                {/* 필터 활성화 상태 표시 */}
+                                {/* 필터 활성화 상태 표시 (기존 유지) */}
                                 {(hasActiveFilters) && (
                                     <div className="w-full flex justify-end">
                                         <div className="text-xs text-blue-600 font-bold flex gap-2 items-center bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100 cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => setShowFilters(true)}>
@@ -1215,15 +1233,56 @@
                                     </div>
                                 )}
 
+                                {/* [NEW] 연동 타겟 설정 패널 */}
+                                <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm space-y-4">
+                                    <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                                        <h4 className="font-bold text-gray-800 flex items-center gap-2">
+                                            <Server size={18} className="text-blue-600"/> 연동 시스템 타겟 설정
+                                        </h4>
+                                        <select 
+                                            value={selectedPreset} 
+                                            onChange={(e) => setSelectedPreset(e.target.value)}
+                                            className="bg-gray-50 border border-gray-200 text-sm rounded-lg px-3 py-1.5 focus:outline-none focus:border-blue-500 font-medium text-gray-600"
+                                        >
+                                            <option value="">프리셋 직접 선택...</option>
+                                            {presetMappings.map(p => <option key={p.label} value={p.label}>{p.label}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">라이브러리명 또는 ID (EUXP)</label>
+                                            <input 
+                                                type="text" value={targetLibrary} onChange={(e) => setTargetLibrary(e.target.value)}
+                                                placeholder="예: NB2000012458 또는 AI_테스트"
+                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block mb-1">RACE 블록 ID (선택/RACE 연동용)</label>
+                                            <input 
+                                                type="text" value={targetRaceId} onChange={(e) => setTargetRaceId(e.target.value)}
+                                                placeholder="예: RACE_TEST_001"
+                                                className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* AI 블록 */}
-                                <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
+                                <div className="bg-gradient-to-r from-violet-600 to-indigo-600 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden group">
                                     <div className="absolute top-0 right-0 p-10 opacity-10 transform translate-x-10 -translate-y-10">
                                         <Sparkles size={150} fill="currentColor" />
                                     </div>
                                     <div className="relative z-10">
                                         <div className="flex items-center gap-2 mb-3 text-violet-200 text-xs font-bold uppercase tracking-wider">
-                                            <Sparkles size={14} /> AI Curation Block
+                                            <Sparkles size={14} /> 노출될 블록 타이틀 (직접 수정 가능)
                                         </div>
+                                        <input 
+                                            type="text" 
+                                            value={blockTitle} 
+                                            onChange={(e) => setBlockTitle(e.target.value)}
+                                            className="w-full bg-transparent border-b border-white/30 text-3xl font-extrabold leading-tight tracking-tight mb-2 focus:outline-none focus:border-white transition-colors"
+                                        />
                                         <h3 className="text-3xl font-extrabold leading-tight tracking-tight mb-2">
                                             {blockTitle}
                                         </h3>
@@ -1398,56 +1457,50 @@
                                     {/* 기존 복사 버튼 옆에 추가 */}
                                     <button 
                                         onClick={sendToEUXP}
-                                        className={`flex-1 h-14 rounded-xl shadow-sm font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 bg-purple-600 text-white hover:bg-purple-700`}
+                                        className={`flex-1 h-14 rounded-xl shadow-sm font-bold text-lg flex items-center justify-center gap-2 transition-all active:scale-95 bg-indigo-600 text-white hover:bg-indigo-700`}
                                     >
                                         <Zap size={20} />
-                                        <span>EUXP 바로 주입</span>
+                                        <span>EUXP & RACE 자동 편성 주입</span>
                                     </button>
                                 </div>
                             </div>
                         )}
+                        {/* 독립된 수동 직접 입력 다이렉트 팝업 */}
                         {showManualModal && (
-                            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center animate-fade-in p-4" onClick={(e) => e.target === e.currentTarget && setShowManualModal(false)}>
-                                <div className="bg-white w-full max-w-md rounded-3xl p-8 space-y-6 animate-slide-up shadow-2xl">
+                            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                                <div className="bg-white w-full max-w-md rounded-3xl p-8 space-y-6 shadow-2xl animate-slide-up">
                                     <div className="flex justify-between items-center border-b border-gray-100 pb-4">
                                         <h3 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                                            <Edit3 size={24} className="text-indigo-600"/> 콘텐츠 직접 추가
+                                            <Server size={24} className="text-indigo-600"/> 라이브러리 다이렉트 업데이트
                                         </h3>
-                                        <button onClick={() => setShowManualModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400"/></button>
+                                        <button onClick={() => setShowManualModal(false)}><X size={20} className="text-gray-400"/></button>
                                     </div>
-                                    
                                     <div className="space-y-4">
-                                        {/* 향후 크롬 익스텐션 연동을 위한 라이브러리 ID 입력란 */}
+                                        <p className="text-xs text-gray-500 bg-gray-50 p-3 rounded-lg leading-relaxed">
+                                            RACE 업데이트를 거치지 않고, 특정 라이브러리의 콘텐츠 목록만 즉시 덮어씌웁니다.
+                                        </p>
                                         <div>
-                                            <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase tracking-wide">
-                                                대상 라이브러리 ID <span className="text-[10px] text-gray-400 font-normal">(선택사항)</span>
-                                            </label>
+                                            <label className="text-xs font-bold block mb-1.5 uppercase tracking-wide">대상 라이브러리명 또는 ID</label>
                                             <input 
-                                                type="text" 
-                                                value={targetLibraryId}
-                                                onChange={(e) => setTargetLibraryId(e.target.value)}
-                                                placeholder="예: LIB20260601"
-                                                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm"
+                                                type="text" value={manualTargetLib} onChange={(e) => setManualTargetLib(e.target.value)} 
+                                                className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm" 
+                                                placeholder="예: NB2000012458"
                                             />
                                         </div>
-                        
-                                        {/* 여러 ID를 한 번에 붙여넣을 수 있는 텍스트 영역 */}
                                         <div>
-                                            <label className="text-xs font-bold text-gray-500 block mb-1.5 uppercase tracking-wide flex justify-between">
+                                            <label className="text-xs font-bold block mb-1.5 uppercase tracking-wide flex justify-between">
                                                 <span>시리즈/에피소드 ID 목록</span>
-                                                <span className="text-indigo-500">엑셀 복사/붙여넣기 가능</span>
+                                                <span className="text-indigo-500">엑셀 복붙 가능</span>
                                             </label>
                                             <textarea 
-                                                value={manualIds}
-                                                onChange={(e) => setManualIds(e.target.value)}
-                                                placeholder="ID를 쉼표, 띄어쓰기, 또는 줄바꿈으로 구분하여 여러 개 입력하세요.&#13;&#10;예)&#13;&#10;CS20000001&#13;&#10;CE2000000001"
-                                                className="w-full h-40 bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-mono resize-none"
+                                                value={manualIds} onChange={(e) => setManualIds(e.target.value)} 
+                                                className="w-full h-40 bg-gray-50 border border-gray-200 rounded-xl p-3.5 focus:ring-2 focus:ring-indigo-500 outline-none transition-all text-sm font-mono resize-none" 
+                                                placeholder="ID를 쉼표나 줄바꿈으로 구분하여 입력"
                                             ></textarea>
                                         </div>
                                     </div>
-                                    
-                                    <button onClick={handleManualSubmit} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
-                                        목록에 추가하기
+                                    <button onClick={handleManualDirectSubmit} className="w-full py-4 bg-indigo-600 text-white rounded-xl font-bold text-lg hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+                                        EUXP 즉시 주입 실행
                                     </button>
                                 </div>
                             </div>
