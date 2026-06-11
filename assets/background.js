@@ -79,7 +79,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
     }
 
-    // 2. EUXP 완료 -> RACE 순차 프로세스 실행
+    // 2. EUXP 완료 -> RACE 순차 프로세스 실행 (오케스트레이션 업그레이드)
     if (request.type === "EUXP_COMPLETED") {
         const data = request.data;
         const blockTitle = data.blockTitle;
@@ -93,15 +93,41 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             const folder = isReference ? 'Reference' : 'Block';
             const initialUrl = `http://1.255.152.46:5630/usecase/${folder}/${targetId}`;
             
-            // Background에서 비동기 흐름 오케스트레이션
             (async () => {
-                // [STEP 1] RACE 초기 화면 띄우기
+                // [STEP 1] RACE 초기 깨끗한 상세 화면 띄우기
                 const tab = await chrome.tabs.create({ url: initialUrl });
                 await waitForTabLoad(tab.id);
                 await new Promise(r => setTimeout(r, 2000));
 
-                // [STEP 2] 라벨 수정 및 ID(블록/레퍼런스) 추출
-                const extractRes = await chrome.scripting.executeScript({
+                // [STEP 2] 변경 전 깨끗한 상세 화면에서 블록 ID 및 레퍼런스 ID 미리 안전하게 추출 🎯
+                const idExtractRes = await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    func: () => {
+                        const dts = Array.from(document.querySelectorAll('dt'));
+                        const getCleanId = (text) => text.match(/(.*?\.(block|race))/i)?.[1] || text.trim();
+                        
+                        // 기존 RACE 마스터의 검증된 스니펫 활용
+                        const bRaw = dts.find(el => el.textContent.includes('블록 타이틀'))?.nextElementSibling?.textContent || '';
+                        const rRaw = dts.find(el => el.textContent.includes('레퍼런스 타이틀'))?.nextElementSibling?.textContent || '';
+                        
+                        return { blockId: getCleanId(bRaw), raceId: getCleanId(rRaw) };
+                    }
+                });
+
+                const ids = idExtractRes[0]?.result;
+                if (!ids || !ids.blockId) {
+                    console.error("🚨 ID 추출 실패:", ids);
+                    chrome.scripting.executeScript({ 
+                        target: { tabId: tab.id }, 
+                        func: () => alert("❌ 상세 페이지에서 블록 ID(블록 타이틀)를 추출하지 못했습니다. 자동화를 중단합니다.") 
+                    });
+                    return;
+                }
+                
+                console.log("✅ 안전하게 가로챈 타겟 ID 정보:", ids);
+
+                // [STEP 3] 추출이 끝났으니 이제 마음 편하게 편집 모드 열고 라벨 변경 실행
+                await chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     args: [blockTitle],
                     func: async (newTitle) => {
@@ -120,12 +146,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             while (Date.now() - start < timeout) {
                                 const btn = Array.from(document.querySelectorAll('button')).find(b => b.innerText.trim() === btnName);
                                 if (btn && btn.offsetParent !== null) { btn.click(); return true; }
-                                await sleep(500);
+                                  await sleep(500);
                             }
                             return false;
                         };
 
-                        // 블록 편집 클릭 및 라벨 변경
+                        // '블록 편집' 클릭
                         await waitAndClick('블록 편집', 6000);
                         await sleep(1500);
 
@@ -145,38 +171,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                                 }
                             }
                         }
-
-                        // 블록 ID 및 레퍼런스 ID 화면에서 긁어오기
-                        const dts = Array.from(document.querySelectorAll('dt'));
-                        const getCleanId = (text) => text.match(/(.*?\.(block|race))/i)?.[1] || text.trim();
-                        const bRaw = dts.find(el => el.textContent.includes('블록 타이틀'))?.nextElementSibling?.textContent || '';
-                        const rRaw = dts.find(el => el.textContent.includes('레퍼런스 타이틀'))?.nextElementSibling?.textContent || '';
-                        
-                        return { blockId: getCleanId(bRaw), raceId: getCleanId(rRaw) };
                     }
                 });
 
-                const ids = extractRes[0]?.result;
-                if (!ids || !ids.blockId) {
-                    chrome.scripting.executeScript({ target: { tabId: tab.id }, func: () => alert("❌ RACE ID(블록 타이틀) 추출에 실패하여 빌드를 진행할 수 없습니다.") });
-                    return;
-                }
-
-                // [STEP 3] 블록 페이지로 강제 이동하여 빌드
+                // [STEP 4] 2단계에서 기억해 둔 진짜 블록 페이지 URL로 다이렉트 이동하여 빌드 돌리기
                 const blockUrl = `http://1.255.152.46:5630/usecase/Block/${ids.blockId}`;
                 await runBuildOnUrl(tab.id, blockUrl, '블록');
 
-                // [STEP 4] 레퍼런스 페이지로 강제 이동하여 빌드 (레퍼런스가 있는 경우만)
+                // [STEP 5] 레퍼런스 페이지로 이동하여 빌드 돌리기 (존재하는 세트일 때만)
                 if (ids.raceId && ids.raceId.toLowerCase() !== 'null' && ids.raceId !== '') {
                     const raceUrl = `http://1.255.152.46:5630/usecase/Reference/${ids.raceId}`;
                     await runBuildOnUrl(tab.id, raceUrl, '레퍼런스');
                 }
 
-                // [STEP 5] 최종 축하 알림
+                // [STEP 6] 최종 전체 공정 성공 알림
                 chrome.scripting.executeScript({ 
                     target: { tabId: tab.id }, 
                     args: [blockTitle],
-                    func: (title) => alert(`✨ [AI Curator] EUXP 주입 및 RACE [${title}] 블록/레퍼런스 빌드가 완벽히 완료되었습니다!`)
+                    func: (title) => alert(`✨ [AI Curator] EUXP 주입 및 RACE [${title}] 블록/레퍼런스 빌드가 완전히 완료되었습니다!`)
                 });
 
             })();
