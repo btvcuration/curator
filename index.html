@@ -1351,11 +1351,11 @@
                                                                 {item.metaType}
                                                             </span>
                                                         )}
-                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory)}`}>
+                                                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getTagStyle(item.subCategory || '')}`}>
                                                             {(item.subCategory || '').includes('영화') ? '🎬 ' : (item.subCategory || '').includes('드라마') ? '📺 ' : ''}
                                                             {item.subCategory || '분류없음'}
                                                         </span>
-                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category}</span>
+                                                        <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category || '기타'}</span>
                                                     </div>
                                                     
                                                     {/* AI 추천 사유 */}
