@@ -900,6 +900,15 @@
                     return;
                 }
             
+                // [NEW] 전송 전 라이브러리 ID 입력받기
+                const inputId = window.prompt("업데이트할 대상 '라이브러리 ID'를 입력하세요.\n(예: NB2000012458)");
+                
+                // 취소를 누르거나 빈 칸으로 확인을 누른 경우 중단
+                if (!inputId || inputId.trim() === "") {
+                    showToast("라이브러리 ID 입력이 취소되었습니다.");
+                    return;
+                }
+            
                 // 1. EUXP 엑셀 양식 헤더 생성
                 const headers = [
                     "콘텐츠ID\n(시리즈/에피소드)",
@@ -924,14 +933,13 @@
                 const ws = XLSX.utils.aoa_to_sheet(data);
                 ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 20 }];
                 XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-    
-                // 4. 파일 다운로드 대신 Base64 문자열로 변환 (핵심!)
+            
+                // 4. 파일 다운로드 대신 Base64 문자열로 변환
                 const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
             
-                // 5. 익스텐션(content_curator.js)이 들을 수 있도록 메시지 발송
+                // 5. 익스텐션으로 메시지 발송 (방금 입력받은 ID 사용)
                 const payload = {
-                    targetLibraryId: targetLibraryId || "", 
-                    blockTitle: blockTitle, // ★ 이 줄을 추가합니다 (AI가 추천한 블록 타이틀)
+                    targetLibraryId: inputId.trim(), 
                     fileData: wbout,
                     fileName: `EUXP_일괄편성_${new Date().toISOString().slice(0,10)}.xlsx`
                 };
@@ -939,7 +947,6 @@
                 window.postMessage({ type: "SEND_TO_EUXP", data: payload }, "*");
                 showToast("🚀 EUXP로 데이터 전송 중...");
             };
-
             const getWeatherIcon = (weatherStr) => {
                 if (!weatherStr) return <Sun size={12} />;
                 const w = String(weatherStr).toLowerCase();
