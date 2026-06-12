@@ -448,12 +448,11 @@
             // [NEW] 라이브 픽 상태 관리
             const [livePickData, setLivePickData] = useState([]);
             const [livePickDayFilter, setLivePickDayFilter] = useState('전체');
-            // 💡 1) 라이브픽 전용 유형 필터 상태 추가
             const [livePickTypeFilter, setLivePickTypeFilter] = useState('전체'); 
             const [selectedLivePick, setSelectedLivePick] = useState(null); 
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
-            // 💡 2) 날짜(MM.dd)를 요일(월~일)로 역산하는 헬퍼 함수
+            // 날짜(MM.dd)를 요일(월~일)로 역산하는 헬퍼 함수
             const getDayOfWeek = (dateStr) => {
                 if (!dateStr) return "";
                 const currentYear = new Date().getFullYear();
@@ -462,8 +461,6 @@
                 const days = ['일', '월', '화', '수', '목', '금', '토'];
                 return days[date.getDay()];
             };
-            const [selectedLivePick, setSelectedLivePick] = useState(null); // 팝업용
-            const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
             // API 호출 함수
             const fetchLivePick = async () => {
