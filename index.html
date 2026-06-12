@@ -878,7 +878,7 @@
                             const meta = String(item.metaType || item['콘텐츠메타유형'] || "");
                             const price = Number(item.price || item.minPrice || item['PPV판매가격'] || 0);
                             const prod = String(item.products || item.productsName || item['콘텐츠상품명'] || ""); 
-                            const nScreen = String(item.nScreen || item.nscreen || item['N스크린여부'] || "NO").toUpperCase();
+                            const nScreen = String(item.nScreen || item.nscreen || item['N스크린여부'] || item['ⁿN스크린여부'] || "NO").toUpperCase().trim();
                     
                             if (!includeRestricted) {
                                 if (cat.includes('성인') || cat === '기타' || cat.includes('adult') || cat.includes('etc')) return false;
@@ -900,9 +900,7 @@
                                 if (!prod.includes(selectedSubscription)) return false;
                             }
                             if (onlyMobile) {
-                                const upperTitle = String(item.title || "").toUpperCase();
-                                const hasNoInTitle = upperTitle.includes("[NO]") || upperTitle.includes("(NO)") || /\bNO\b/.test(upperTitle);
-                                if (nScreen !== "YES" || hasNoInTitle) return false; 
+                                if (nScreen !== "YES") return false; 
                             }
                             return true;
                         });
@@ -1811,14 +1809,20 @@
                                                                     </span>
                                                                     <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category || '기타'}</span>
                                                                 
-                                                                    {/* 2. [NEW] N스크린 여부 뱃지 (YES는 파란색, NO는 빨간색) */}
-                                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border flex items-center gap-0.5 ${
-                                                                        String(item.nScreen || item.nscreen || item['N스크린여부'] || 'NO').toUpperCase() === 'YES' 
-                                                                        ? 'bg-blue-50 text-blue-600 border-blue-200' 
-                                                                        : 'bg-red-50 text-red-500 border-red-200'
-                                                                    }`}>
-                                                                        📱 N스크린 {String(item.nScreen || item.nscreen || item['N스크린여부'] || 'NO').toUpperCase()}
-                                                                    </span>
+                                                                    {/* 💡 렌더링 시에도 동일하게 'ⁿN스크린여부'와 .trim() 반영 */}
+                                                                    {(() => {
+                                                                        const isMobileYes = String(item.nScreen || item.nscreen || item['N스크린여부'] || item['ⁿN스크린여부'] || 'NO').toUpperCase().trim() === 'YES';
+                                                                        
+                                                                        return (
+                                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border flex items-center gap-0.5 ${
+                                                                                isMobileYes 
+                                                                                ? 'bg-blue-50 text-blue-600 border-blue-200' 
+                                                                                : 'bg-red-50 text-red-500 border-red-200'
+                                                                            }`}>
+                                                                                📱 N스크린 {isMobileYes ? 'YES' : 'NO'}
+                                                                            </span>
+                                                                        );
+                                                                    })()}
                                                                 
                                                                     {/* 3. [최종 수정] 월정액 뱃지 (패스 제외, 지상파 통합 후 여러 개면 각각 표시) */}
                                                                     {getMappedSubscriptions(item.products || item.productsName || item['콘텐츠상품명']).map((prod, idx) => (
