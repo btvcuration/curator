@@ -448,6 +448,20 @@
             // [NEW] 라이브 픽 상태 관리
             const [livePickData, setLivePickData] = useState([]);
             const [livePickDayFilter, setLivePickDayFilter] = useState('전체');
+            // 💡 1) 라이브픽 전용 유형 필터 상태 추가
+            const [livePickTypeFilter, setLivePickTypeFilter] = useState('전체'); 
+            const [selectedLivePick, setSelectedLivePick] = useState(null); 
+            const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
+
+            // 💡 2) 날짜(MM.dd)를 요일(월~일)로 역산하는 헬퍼 함수
+            const getDayOfWeek = (dateStr) => {
+                if (!dateStr) return "";
+                const currentYear = new Date().getFullYear();
+                const [month, day] = dateStr.split('.').map(Number);
+                const date = new Date(currentYear, month - 1, day);
+                const days = ['일', '월', '화', '수', '목', '금', '토'];
+                return days[date.getDay()];
+            };
             const [selectedLivePick, setSelectedLivePick] = useState(null); // 팝업용
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
@@ -1438,17 +1452,31 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 💡 라이브 픽 요일 필터 (onair 탭일 때만 노출) */}
+                                    {/* 💡 라이브 픽 메타유형 및 요일 필터 (onair 탭일 때만 노출) */}
                                     {activeTab === 'onair' && (
-                                        <div className="flex items-center gap-1 mt-4 bg-white border border-gray-200 p-1 rounded-xl w-max shadow-sm">
-                                            {['전체', '월', '화', '수', '목', '금', '토', '일'].map(d => (
-                                                <button 
-                                                    key={d} onClick={() => setLivePickDayFilter(d)}
-                                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${livePickDayFilter === d ? 'bg-slate-800 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
-                                                >
-                                                    {d}
-                                                </button>
-                                            ))}
+                                        <div className="flex flex-wrap items-center gap-3 mt-4 shrink-0">
+                                            {/* 동적 메타유형 필터 */}
+                                            <div className="flex bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
+                                                {['전체', ...Array.from(new Set(livePickData.map(d => d.metaType).filter(Boolean)))].map(t => (
+                                                    <button 
+                                                        key={t} onClick={() => setLivePickTypeFilter(t)}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${livePickTypeFilter === t ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                                                    >
+                                                        {t}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {/* 요일 필터 */}
+                                            <div className="flex items-center gap-1 bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
+                                                {['전체', '월', '화', '수', '목', '금', '토', '일'].map(d => (
+                                                    <button 
+                                                        key={d} onClick={() => setLivePickDayFilter(d)}
+                                                        className={`w-8 h-7 text-xs font-bold rounded-lg transition-all ${livePickDayFilter === d ? 'bg-slate-800 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+                                                    >
+                                                        {d}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
 
@@ -1459,7 +1487,19 @@
                                             // 📊 라이브 픽 (시청률) 화면 렌더링
                                             // ============================================
                                             livePickData.filter(item => {
-                                                // 요일 필터 (우선 데이터에 요일이 없다면 전체 노출)
+                                                const history = item.history || [];
+                                                if (history.length === 0) return false;
+                                                const latest = history[history.length - 1];
+
+                                                // 1. 요일 필터
+                                                if (livePickDayFilter !== '전체') {
+                                                    const itemDay = getDayOfWeek(latest.date);
+                                                    if (itemDay !== livePickDayFilter) return false;
+                                                }
+
+                                                // 2. 실제 메타유형 기준 필터링
+                                                if (livePickTypeFilter !== '전체' && item.metaType !== livePickTypeFilter) return false;
+
                                                 return true; 
                                             }).map((item, i) => {
                                                 const history = item.history || [];
@@ -1468,8 +1508,6 @@
                                                 
                                                 const isUp = latest.diff > 0;
                                                 const trajArray = (latest.trajectory || "").split('→').map(v => parseFloat(v) || 0);
-                                                
-                                                // 색상 스타일 지정
                                                 const style = CARD_STYLES[i % CARD_STYLES.length];
 
                                                 return (
@@ -1483,10 +1521,19 @@
                                                     >
                                                         <div className="flex justify-between items-start w-full mb-3">
                                                             <div>
-                                                                <div className="flex items-center gap-1.5 mb-1.5">
+                                                                <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                                                                    {/* 채널 뱃지 */}
                                                                     <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-gray-800 text-white">
                                                                         {item.channel}
                                                                     </span>
+                                                                    
+                                                                    {/* 💡 AI 상태 뱃지 표시 영역 */}
+                                                                    {latest.type === 'lifecycle_new' && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">✨ 신작</span>}
+                                                                    {latest.type === 'lifecycle_end' && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">🏁 종영</span>}
+                                                                    {latest.type === 'drama_top' && <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">👑 슬롯 원톱</span>}
+                                                                    {latest.type === 'variety_momentum' && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">🚀 화제성 급등</span>}
+                                                                    
+                                                                    {/* 모니터링 뱃지 */}
                                                                     {!item.isMatched && (
                                                                         <span className="text-[10px] text-gray-500 font-bold bg-white px-1.5 py-0.5 rounded border border-gray-200 flex items-center gap-0.5">
                                                                             <AlertTriangle size={10}/> 모니터링 F/U
@@ -1497,7 +1544,7 @@
                                                                     {latest.emoji || '📺'} {item.title}
                                                                 </h4>
                                                             </div>
-                                                            <div className="shrink-0 ml-2">
+                                                            <div className="shrink-0 ml-2 mt-1">
                                                                 <CardSparkline data={trajArray} isUp={isUp} />
                                                             </div>
                                                         </div>
