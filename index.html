@@ -280,6 +280,37 @@
                 </div>
             </div>
         );
+        
+        const CardSparkline = ({ data, isUp }) => {
+            const validData = data.filter(v => v > 0);
+            if(validData.length === 0) return null;
+            
+            const min = Math.min(...validData) * 0.9;
+            const max = Math.max(...validData) * 1.05;
+            const range = max - min === 0 ? 1 : max - min;
+            
+            const points = data.map((val, i) => {
+                const x = (i / (data.length - 1)) * 100;
+                const y = val === 0 ? 100 : 100 - ((val - min) / range) * 100;
+                return `${x},${y}`;
+            }).join(' ');
+
+            const strokeColor = isUp ? '#ef4444' : '#3b82f6'; // 상승 빨강, 하락 파랑
+
+            return (
+                <div className="w-16 h-8 flex flex-col justify-end">
+                    <svg viewBox="0 -5 100 110" className="w-full h-full overflow-visible">
+                        <polyline points={points} fill="none" stroke={strokeColor} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" className="opacity-50" />
+                        {data.map((val, i) => {
+                            if(val === 0) return null;
+                            const x = (i / (data.length - 1)) * 100;
+                            const y = 100 - ((val - min) / range) * 100;
+                            return <circle key={i} cx={x} cy={y} r="6" fill={i === data.length - 1 ? strokeColor : "#cbd5e1"} />;
+                        })}
+                    </svg>
+                </div>
+            );
+        };
 
         const App = () => {
             // [NEW] 트렌드 새로고침 로딩 상태
@@ -413,6 +444,33 @@
 
             // [NEW] 탭 관리를 위한 새로운 State
             const [trendTabs, setTrendTabs] = useState({ person: [], viral: [], onair: [], tpo: [] });
+            // [NEW] 라이브 픽 상태 관리
+            const [livePickData, setLivePickData] = useState([]);
+            const [livePickDayFilter, setLivePickDayFilter] = useState('전체');
+            const [selectedLivePick, setSelectedLivePick] = useState(null); // 팝업용
+            const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
+
+            // API 호출 함수
+            const fetchLivePick = async () => {
+                try {
+                    const res = await fetch(`${GAS_API_URL}?mode=livepick&_t=${new Date().getTime()}`);
+                    const json = await res.json();
+                    if(json.status === 'success') {
+                        // 최신 시청률 기준 내림차순 정렬
+                        const sorted = json.data.sort((a,b) => {
+                            const aLatest = a.history[a.history.length-1]?.rating || 0;
+                            const bLatest = b.history[b.history.length-1]?.rating || 0;
+                            return bLatest - aLatest;
+                        });
+                        setLivePickData(sorted);
+                    }
+                } catch(e) { console.error("LivePick Load Error:", e); }
+            };
+
+            // useEffect(initApp) 안의 트렌드 로드 부분 밑에 추가!
+            // fetchLivePick(); 
+
+            // handleTrendRefresh 함수 안에도 fetchLivePick() 추가!
             const [activeTab, setActiveTab] = useState("person"); // 현재 선택된 탭
             
             // [수정] todaysPicks는 이제 상태가 아니라, activeTab에 따라 파생되는 변수
@@ -1378,82 +1436,160 @@
                                         </div>
                                     </div>
                                     
-                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
-                                        {todaysPicks.map((item, i) => {
-                                            // 데이터 파싱 로직 (기존 유지)
-                                            let emoji = getRandomEmoji(i);
-                                            let title = "";
-                                            let keywords = [];
-                                            let reason = "";
-                                            let targetQuery = ""; // [NEW] 백엔드로 보낼 최종 검색어
-                                            
-                                            if (typeof item === 'object' && item !== null && item.emoji) {
-                                                emoji = item.emoji;
-                                                title = item.title;
-                                                keywords = item.keywords || [];
-                                                reason = item.reason || "";
-                                                
-                                                // [NEW] targetPerson(예: "장항준")을 기본으로 하되, 없으면 title 괄호 제거
-                                                const baseName = item.targetPerson || item.title.replace(/\[.*?\]|\(.*?\)/g, '').trim();
-                                                // [NEW] 검색어에 기획 의도(reason)를 통째로 붙여서 AI의 문맥 이해를 도움
-                                                targetQuery = reason ? `${baseName} (큐레이션 의도: ${reason})` : baseName;
-                                                
-                                            } else {
-                                                const str = String(item);
-                                                const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
-                                                if (emojiMatch) emoji = emojiMatch[0];
-                                                title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
-                                                           .replace(/\*\*/g, '').replace(/\"/g, '').trim();
-                                                keywords = context.trends.slice(0, 2); // 기본값: 뉴스 트렌드 태그 활용
-                                                targetQuery = title; // [NEW] 텍스트만 있는 경우엔 title 그대로 사용
-                                            }
-
-                                            // [UI 수정] 색상 및 레이아웃 적용
-                                            const style = CARD_STYLES[i % CARD_STYLES.length];
-
-                                            return (
+                                    {/* 💡 라이브 픽 요일 필터 (onair 탭일 때만 노출) */}
+                                    {activeTab === 'onair' && (
+                                        <div className="flex items-center gap-1 mt-4 bg-white border border-gray-200 p-1 rounded-xl w-max shadow-sm">
+                                            {['전체', '월', '화', '수', '목', '금', '토', '일'].map(d => (
                                                 <button 
-                                                    key={i} 
-                                                    onClick={() => handleSearch(targetQuery)} // [수정] title 대신 기획의도가 포함된 targetQuery 전달
-                                                    className={`flex flex-row md:flex-col items-center md:items-start h-full p-4 md:p-5 rounded-2xl border shadow-sm transition-all group text-left relative overflow-hidden ${style.bg} ${style.border} ${style.hover} hover:-translate-y-1 hover:shadow-md w-full`}
+                                                    key={d} onClick={() => setLivePickDayFilter(d)}
+                                                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${livePickDayFilter === d ? 'bg-slate-800 text-white' : 'text-gray-500 hover:bg-gray-100'}`}
                                                 >
-                                                    {/* 상단(모바일:좌측): 이모지 */}
-                                                    <div className="flex-shrink-0 mr-4 md:mr-0 md:mb-4 relative z-10">
-                                                        <div className="w-12 h-12 md:w-10 md:h-10 rounded-xl bg-white flex items-center justify-center text-2xl md:text-xl shadow-sm group-hover:scale-110 transition-transform">
-                                                            {emoji}
-                                                        </div>
-                                                    </div>
-                                                    
-                                                    {/* 중단(모바일:우측): 텍스트 정보 */}
-                                                    <div className="flex-1 min-w-0 relative z-10 flex flex-col justify-center md:justify-start w-full">
-                                                        <h4 className="text-[15px] font-bold text-gray-800 leading-snug break-keep line-clamp-2 md:mb-3">
-                                                            {title}
-                                                        </h4>
-                                                        {/* AI 추천 사유 (큐레이터 참고용) */}
-                                                        {reason && (
-                                                            <p className="text-[11px] text-gray-500 mt-2 mb-3 leading-relaxed break-keep">
-                                                                <Sparkles size={10} className="inline mr-1 text-indigo-400" />
-                                                                {reason}
-                                                            </p>
-                                                        )}
-                                                        
-                                                        {/* 태그 영역 (mt-auto를 주어 항상 카드 하단에 붙도록 유지) */}
-                                                        <div className="flex flex-wrap gap-1.5 mt-auto pt-2">
-                                                            {keywords.map((k, idx) => (
-                                                                <span key={idx} className={`text-[10px] px-2 py-0.5 rounded border font-bold ${style.tag}`}>
-                                                                    {k}
-                                                                </span>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-
-                                                    {/* 모바일용 화살표 (우측 끝) */}
-                                                    <div className="md:hidden ml-2 text-gray-300">
-                                                        <ArrowRight size={18} />
-                                                    </div>
+                                                    {d}
                                                 </button>
-                                            );
-                                        })}
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 transition-opacity duration-300 ${isTrendRefreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'} ${activeTab === 'onair' ? 'mt-3' : 'mt-4'}`}>
+                                        
+                                        {activeTab === 'onair' ? (
+                                            // ============================================
+                                            // 📊 라이브 픽 (시청률) 화면 렌더링
+                                            // ============================================
+                                            livePickData.filter(item => {
+                                                // 요일 필터 (우선 데이터에 요일이 없다면 전체 노출)
+                                                return true; 
+                                            }).map((item, i) => {
+                                                const history = item.history || [];
+                                                if (history.length === 0) return null;
+                                                const latest = history[history.length - 1];
+                                                
+                                                const isUp = latest.diff > 0;
+                                                const trajArray = (latest.trajectory || "").split('→').map(v => parseFloat(v) || 0);
+                                                
+                                                // 색상 스타일 지정
+                                                const style = CARD_STYLES[i % CARD_STYLES.length];
+
+                                                return (
+                                                    <button 
+                                                        key={item.id} 
+                                                        onClick={() => {
+                                                            setSelectedLivePick(item);
+                                                            setSelectedHistoryIdx(history.length - 1);
+                                                        }}
+                                                        className={`flex flex-col h-full p-4 md:p-5 rounded-2xl border shadow-sm transition-all text-left relative overflow-hidden ${style.bg} ${style.border} hover:-translate-y-1 hover:shadow-md w-full`}
+                                                    >
+                                                        <div className="flex justify-between items-start w-full mb-3">
+                                                            <div>
+                                                                <div className="flex items-center gap-1.5 mb-1.5">
+                                                                    <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-gray-800 text-white">
+                                                                        {item.channel}
+                                                                    </span>
+                                                                    {!item.isMatched && (
+                                                                        <span className="text-[10px] text-gray-500 font-bold bg-white px-1.5 py-0.5 rounded border border-gray-200 flex items-center gap-0.5">
+                                                                            <AlertTriangle size={10}/> 모니터링 F/U
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                <h4 className="text-[15px] font-black text-gray-900 leading-tight break-keep line-clamp-2">
+                                                                    {latest.emoji || '📺'} {item.title}
+                                                                </h4>
+                                                            </div>
+                                                            <div className="shrink-0 ml-2">
+                                                                <CardSparkline data={trajArray} isUp={isUp} />
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="flex items-baseline gap-2 mb-3">
+                                                            <span className="text-2xl font-extrabold text-gray-800 tracking-tighter">
+                                                                {latest.rating}<span className="text-sm font-bold text-gray-400">%</span>
+                                                            </span>
+                                                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${isUp ? 'text-red-600 bg-red-100' : 'text-blue-600 bg-blue-100'}`}>
+                                                                {isUp ? '▲' : '▼'} {Math.abs(latest.diff).toFixed(1)}%p
+                                                            </span>
+                                                        </div>
+                                                        
+                                                        <div className="mt-auto pt-3 border-t border-gray-200/50">
+                                                            <p className="text-[11px] text-gray-600 leading-relaxed break-keep line-clamp-3">
+                                                                <Sparkles size={10} className="inline mr-1 text-indigo-500" />
+                                                                {latest.insight || "AI 분석 데이터가 없습니다."}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                )
+                                            })
+                                        ) : (
+                                            // ============================================
+                                            // 🌟 기존 트렌드 픽 화면 렌더링
+                                            // ============================================
+                                            todaysPicks.map((item, i) => {
+                                                // 데이터 파싱 로직 (기존 유지)
+                                                let emoji = getRandomEmoji(i);
+                                                let title = "";
+                                                let keywords = [];
+                                                let reason = "";
+                                                let targetQuery = ""; 
+                                                
+                                                if (typeof item === 'object' && item !== null && item.emoji) {
+                                                    emoji = item.emoji;
+                                                    title = item.title;
+                                                    keywords = item.keywords || [];
+                                                    reason = item.reason || "";
+                                                    
+                                                    const baseName = item.targetPerson || item.title.replace(/\[.*?\]|\(.*?\)/g, '').trim();
+                                                    targetQuery = reason ? `${baseName} (큐레이션 의도: ${reason})` : baseName;
+                                                    
+                                                } else {
+                                                    const str = String(item);
+                                                    const emojiMatch = str.match(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/);
+                                                    if (emojiMatch) emoji = emojiMatch[0];
+                                                    title = str.replace(/([\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF])/g, '')
+                                                               .replace(/\*\*/g, '').replace(/\"/g, '').trim();
+                                                    keywords = context.trends.slice(0, 2); 
+                                                    targetQuery = title; 
+                                                }
+
+                                                const style = CARD_STYLES[i % CARD_STYLES.length];
+
+                                                return (
+                                                    <button 
+                                                        key={i} 
+                                                        onClick={() => handleSearch(targetQuery)} 
+                                                        className={`flex flex-row md:flex-col items-center md:items-start h-full p-4 md:p-5 rounded-2xl border shadow-sm transition-all group text-left relative overflow-hidden ${style.bg} ${style.border} ${style.hover} hover:-translate-y-1 hover:shadow-md w-full`}
+                                                    >
+                                                        <div className="flex-shrink-0 mr-4 md:mr-0 md:mb-4 relative z-10">
+                                                            <div className="w-12 h-12 md:w-10 md:h-10 rounded-xl bg-white flex items-center justify-center text-2xl md:text-xl shadow-sm group-hover:scale-110 transition-transform">
+                                                                {emoji}
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="flex-1 min-w-0 relative z-10 flex flex-col justify-center md:justify-start w-full">
+                                                            <h4 className="text-[15px] font-bold text-gray-800 leading-snug break-keep line-clamp-2 md:mb-3">
+                                                                {title}
+                                                            </h4>
+                                                            {reason && (
+                                                                <p className="text-[11px] text-gray-500 mt-2 mb-3 leading-relaxed break-keep">
+                                                                    <Sparkles size={10} className="inline mr-1 text-indigo-400" />
+                                                                    {reason}
+                                                                </p>
+                                                            )}
+                                                            
+                                                            <div className="flex flex-wrap gap-1.5 mt-auto pt-2">
+                                                                {keywords.map((k, idx) => (
+                                                                    <span key={idx} className={`text-[10px] px-2 py-0.5 rounded border font-bold ${style.tag}`}>
+                                                                        {k}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="md:hidden ml-2 text-gray-300">
+                                                            <ArrowRight size={18} />
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -2068,6 +2204,67 @@
                                     </button>
                                 </div>
                            </div>
+                        )}
+                        {/* 💡 라이브 픽 상세 이력 팝업 */}
+                        {selectedLivePick && (
+                            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={(e) => e.target === e.currentTarget && setSelectedLivePick(null)}>
+                                <div className="bg-white w-full max-w-lg rounded-3xl p-8 space-y-6 shadow-2xl animate-slide-up">
+                                    <div className="flex justify-between items-center border-b border-gray-100 pb-4">
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded font-bold">{selectedLivePick.channel}</span>
+                                                <span className="text-[10px] text-gray-400 font-mono">{selectedLivePick.isMatched ? `DB매칭: ${selectedLivePick.id}` : '미매칭(F/U 타겟)'}</span>
+                                            </div>
+                                            <h3 className="text-2xl font-bold text-gray-900">{selectedLivePick.title} 상세 분석</h3>
+                                        </div>
+                                        <button onClick={() => setSelectedLivePick(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400"/></button>
+                                    </div>
+                                    
+                                    <div className="space-y-4">
+                                        <label className="text-xs font-bold text-gray-500 block uppercase tracking-wide">주차별 AI 시청률 리포트</label>
+                                        
+                                        {/* 날짜 선택 버튼 그룹 */}
+                                        <div className="flex flex-wrap gap-2">
+                                            {selectedLivePick.history.map((h, idx) => (
+                                                <button 
+                                                    key={idx}
+                                                    onClick={() => setSelectedHistoryIdx(idx)}
+                                                    className={`px-3 py-2 text-sm font-bold rounded-xl transition-all ${selectedHistoryIdx === idx ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-50 text-gray-500 hover:bg-gray-100 border border-gray-200'}`}
+                                                >
+                                                    {h.date} ({h.rating}%)
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* 선택된 날짜의 코멘트 */}
+                                        <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm font-bold text-indigo-900">
+                                                    {selectedLivePick.history[selectedHistoryIdx]?.date} 기준 브리핑
+                                                </span>
+                                                <span className={`text-xs font-bold px-2 py-1 rounded-md bg-white border ${selectedLivePick.history[selectedHistoryIdx]?.diff > 0 ? 'text-red-500 border-red-200' : 'text-blue-500 border-blue-200'}`}>
+                                                    등락: {selectedLivePick.history[selectedHistoryIdx]?.diff}%p
+                                                </span>
+                                            </div>
+                                            <p className="text-[13px] text-indigo-800 leading-relaxed font-medium bg-white p-4 rounded-xl shadow-sm">
+                                                {selectedLivePick.history[selectedHistoryIdx]?.insight || "해당 일자의 AI 분석 코멘트가 없습니다."}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="pt-2">
+                                        <button 
+                                            onClick={() => {
+                                                handleSearch(selectedLivePick.title);
+                                                setSelectedLivePick(null);
+                                            }}
+                                            className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold text-lg hover:bg-gray-800 transition-colors shadow-lg flex items-center justify-center gap-2"
+                                        >
+                                            <Search size={18} /> 연관 VOD 검색 및 편성
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </main>
                 </div>
