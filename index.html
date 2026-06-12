@@ -349,6 +349,7 @@
                             ...prev,
                             ...json.context 
                         }));
+                        await fetchLivePick();
                         
                         showToast("🔥 트렌드와 날씨가 업데이트되었습니다!");
                     }
@@ -581,6 +582,7 @@
                                 setLastUpdated(`${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`);
                             }
                         }
+                        await fetchLivePick();
                     } catch (e) {
                         console.warn("트렌드 동기화 실패:", e);
                     }
