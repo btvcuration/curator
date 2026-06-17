@@ -467,16 +467,22 @@
                 try {
                     const res = await fetch(`${GAS_API_URL}?mode=livepick&_t=${new Date().getTime()}`);
                     const json = await res.json();
-                    if(json.status === 'success') {
-                        // 최신 시청률 기준 내림차순 정렬
+                    if(json.status === 'success' && Array.isArray(json.data)) {
+                        // ✅ 방어 코드 적용: history가 없더라도 에러가 나지 않도록 수정
                         const sorted = json.data.sort((a,b) => {
-                            const aLatest = a.history[a.history.length-1]?.rating || 0;
-                            const bLatest = b.history[b.history.length-1]?.rating || 0;
+                            const aHistory = a.history || []; // history가 없으면 빈 배열로 처리
+                            const bHistory = b.history || [];
+                            
+                            const aLatest = aHistory.length > 0 ? (aHistory[aHistory.length-1]?.rating || 0) : 0;
+                            const bLatest = bHistory.length > 0 ? (bHistory[bHistory.length-1]?.rating || 0) : 0;
+                            
                             return bLatest - aLatest;
                         });
                         setLivePickData(sorted);
                     }
-                } catch(e) { console.error("LivePick Load Error:", e); }
+                } catch(e) { 
+                    console.error("LivePick Load Error:", e); 
+                }
             };
 
             // useEffect(initApp) 안의 트렌드 로드 부분 밑에 추가!
