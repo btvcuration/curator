@@ -1498,11 +1498,17 @@
                                                 return true; 
                                             }).map((item, i) => {
                                                 const history = item.history || [];
-                                                if (history.length === 0) return null;
                                                 const latest = history[history.length - 1];
+                                                if (!latest) return null; // 방어 코드
                                                 
-                                                const isUp = latest.diff > 0;
-                                                const trajArray = (latest.trajectory || "").split('→').map(v => parseFloat(v) || 0);
+                                                const isUp = Number(latest.diff || 0) > 0;
+                                                
+                                                // 🔥 이 부분이 가장 중요합니다! 숫자가 들어와도 에러가 나지 않도록 String()으로 감싸주세요.
+                                                const trajString = String(latest.trajectory || "");
+                                                const trajArray = trajString.includes('→') 
+                                                    ? trajString.split('→').map(v => parseFloat(v) || 0) 
+                                                    : [parseFloat(trajString) || 0];
+                                                
                                                 const style = CARD_STYLES[i % CARD_STYLES.length];
 
                                                 return (
