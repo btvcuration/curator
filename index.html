@@ -281,7 +281,7 @@
             </div>
         );
         
-        const CardSparkline = ({ data, isUp }) => {
+        const CardSparkline = ({ data, labels, isUp }) => {
             const validData = data.filter(v => v > 0);
             if(validData.length === 0) return null;
             
@@ -289,25 +289,39 @@
             const max = Math.max(...validData) * 1.05;
             const range = max - min === 0 ? 1 : max - min;
             
-            const points = data.map((val, i) => {
-                const x = (i / (data.length - 1)) * 100;
-                const y = val === 0 ? 100 : 100 - ((val - min) / range) * 100;
-                return `${x},${y}`;
-            }).join(' ');
-
             const strokeColor = isUp ? '#ef4444' : '#3b82f6'; // 상승 빨강, 하락 파랑
 
             return (
-                <div className="w-16 h-8 flex flex-col justify-end">
-                    <svg viewBox="0 -5 100 110" className="w-full h-full overflow-visible">
-                        <polyline points={points} fill="none" stroke={strokeColor} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" className="opacity-50" />
-                        {data.map((val, i) => {
-                            if(val === 0) return null;
-                            const x = (i / (data.length - 1)) * 100;
-                            const y = 100 - ((val - min) / range) * 100;
-                            return <circle key={i} cx={x} cy={y} r="6" fill={i === data.length - 1 ? strokeColor : "#cbd5e1"} />;
-                        })}
-                    </svg>
+                <div className="flex flex-col w-20 md:w-24 shrink-0">
+                    <div className="w-full h-8 flex flex-col justify-end">
+                        <svg viewBox="0 -5 100 110" className="w-full h-full overflow-visible">
+                            <polyline 
+                                points={data.map((val, i) => `${(i / (data.length - 1 || 1)) * 100},${val === 0 ? 100 : 100 - ((val - min) / range) * 100}`).join(' ')} 
+                                fill="none" 
+                                stroke={strokeColor} 
+                                strokeWidth="5" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                className="opacity-40" 
+                            />
+                            {data.map((val, i) => {
+                                if(val === 0) return null;
+                                const x = (i / (data.length - 1 || 1)) * 100;
+                                const y = 100 - ((val - min) / range) * 100;
+                                return <circle key={i} cx={x} cy={y} r="6" fill={i === data.length - 1 ? strokeColor : "#cbd5e1"} />;
+                            })}
+                        </svg>
+                    </div>
+                    {/* ✅ 하단 날짜 라벨 렌더링 */}
+                    {labels && labels.length > 0 && (
+                        <div className="flex justify-between w-full mt-2 pt-1 border-t border-gray-100/80">
+                            {labels.map((lbl, i) => (
+                                <span key={i} className={`text-[9px] font-mono tracking-tighter ${i === labels.length - 1 ? 'text-gray-800 font-extrabold' : 'text-gray-400'}`}>
+                                    {lbl}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -1536,12 +1550,15 @@
                                                 const isDown = diffStr.includes('▼');
                                                 const diffColor = isUp ? 'text-red-600 bg-red-100' : isDown ? 'text-blue-600 bg-blue-100' : 'text-gray-600 bg-gray-100';
                                                 
-                                                const trajString = String(latest.trajectory || "");
-                                                const trajArray = trajString.includes('→') 
-                                                    ? trajString.split('→').map(v => parseFloat(v) || 0) 
-                                                    : [parseFloat(trajString) || 0];
+                                                // ✅ [수정 핵심] 기존 문자열 파싱 대신, 실제 일자별 시청률과 날짜 추출 (최근 4일치)
+                                                const recentHistory = history.slice(-4); 
+                                                const chartData = recentHistory.map(h => h.rating);
+                                                const chartLabels = recentHistory.map(h => h.date);
                                                 
                                                 const style = CARD_STYLES[i % CARD_STYLES.length];
+                                                
+                                                // ✅ [수정 핵심] 타이틀이 "-" 이거나 비어있을 경우 원제(OriginalTitle) 노출
+                                                const displayTitle = (item.title === "-" || !item.title) ? item.originalTitle : item.title;
 
                                                 return (
                                                     <button 
@@ -1558,18 +1575,18 @@
                                                                     <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-gray-800 text-white">
                                                                         {item.channel}
                                                                     </span>
-                                                                    {/* 💡 장르, 슬롯, 상태 플래그 표시 */}
                                                                     {item.metaType && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{item.metaType}</span>}
                                                                     {item.slot && item.slot !== "-" && <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{item.slot}</span>}
                                                                     {(item.lifecycle === "신규" || item.lifecycle === "신작") && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">✨ 신규</span>}
                                                                     {item.lifecycle === "종영" && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">🏁 종영</span>}
                                                                 </div>
                                                                 <h4 className="text-[15px] font-black text-gray-900 leading-tight break-keep line-clamp-2">
-                                                                    {item.title}
+                                                                    {displayTitle}
                                                                 </h4>
                                                             </div>
                                                             <div className="shrink-0 ml-2 mt-1">
-                                                                <CardSparkline data={trajArray} isUp={isUp} />
+                                                                {/* ✅ [수정 핵심] 새로운 데이터와 날짜 라벨을 넘겨줍니다 */}
+                                                                <CardSparkline data={chartData} labels={chartLabels} isUp={isUp} />
                                                             </div>
                                                         </div>
 
@@ -2336,12 +2353,15 @@
                                             {/* 선택된 날짜의 추이 그래프 렌더링 */}
                                             {(() => {
                                                 const currentH = selectedLivePick.history[selectedHistoryIdx];
-                                                const trajStr = String(currentH?.trajectory || "");
-                                                const tArray = trajStr.includes('→') ? trajStr.split('→').map(v => parseFloat(v) || 0) : [];
                                                 const isUp = String(currentH?.diff).includes('▲');
-                                                return tArray.length > 0 ? (
-                                                    <div className="bg-white/50 rounded-xl p-3 flex justify-center mb-2 h-16">
-                                                        <CardSparkline data={tArray} isUp={isUp} />
+                                                // ✅ [수정 핵심] 선택한 날짜까지의 히스토리 중 최근 5개 추출하여 렌더링
+                                                const historyUpToIdx = selectedLivePick.history.slice(0, selectedHistoryIdx + 1).slice(-5);
+                                                const chartData = historyUpToIdx.map(h => h.rating);
+                                                const chartLabels = historyUpToIdx.map(h => h.date);
+
+                                                return chartData.length > 0 ? (
+                                                    <div className="bg-white/50 rounded-xl p-4 flex justify-center mb-2">
+                                                        <CardSparkline data={chartData} labels={chartLabels} isUp={isUp} />
                                                     </div>
                                                 ) : null;
                                             })()}
