@@ -443,23 +443,31 @@
 
             const [context, setContext] = useState({ weather: "날씨 확인 중", temp: "--", trends: [] });
 
-            // [NEW] 탭 관리를 위한 새로운 State
             const [trendTabs, setTrendTabs] = useState({ person: [], viral: [], onair: [], tpo: [] });
-            // [NEW] 라이브 픽 상태 관리
+
+            // ✅ 어제 요일 구하기 헬퍼
+            const getYesterdayDay = () => {
+                const days = ['일', '월', '화', '수', '목', '금', '토'];
+                const d = new Date();
+                d.setDate(d.getDate() - 1);
+                return days[d.getDay()];
+            };
+
             const [livePickData, setLivePickData] = useState([]);
-            const [livePickDayFilter, setLivePickDayFilter] = useState('전체');
+            const [livePickDayFilter, setLivePickDayFilter] = useState(getYesterdayDay()); // 디폴트 어제
             const [livePickTypeFilter, setLivePickTypeFilter] = useState('전체'); 
+            const [livePickStatusFilter, setLivePickStatusFilter] = useState('방영중(유지)'); // ✅ 새로운 상태 필터 (디폴트: 방영중)
             const [selectedLivePick, setSelectedLivePick] = useState(null); 
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
-            // 날짜(MM.dd)를 요일(월~일)로 역산하는 헬퍼 함수
+            // 날짜(MM.dd)를 요일로 역산 (오류 완벽 수정)
             const getDayOfWeek = (dateStr) => {
                 if (!dateStr) return "";
                 const currentYear = new Date().getFullYear();
-                const [month, day] = dateStr.split('.').map(Number);
-                const date = new Date(currentYear, month - 1, day);
-                const days = ['일', '월', '화', '수', '목', '금', '토'];
-                return days[date.getDay()];
+                const parts = String(dateStr).replace(/'/g, '').split('.');
+                if(parts.length < 2) return "";
+                const date = new Date(currentYear, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+                return ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
             };
 
             // API 호출 함수
@@ -1447,7 +1455,7 @@
                                         </div>
                                     </div>
                                     
-                                    {/* 💡 라이브 픽 메타유형 및 요일 필터 (onair 탭일 때만 노출) */}
+                                    {/* 💡 라이브 픽 메타유형, 요일, 상태 필터 (onair 탭일 때만 노출) */}
                                     {activeTab === 'onair' && (
                                         <div className="flex flex-wrap items-center gap-3 mt-4 shrink-0">
                                             {/* 동적 메타유형 필터 */}
@@ -1461,6 +1469,19 @@
                                                     </button>
                                                 ))}
                                             </div>
+                                            
+                                            {/* ✅ 라이프사이클(상태) 필터 추가 */}
+                                            <div className="flex bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
+                                                {['전체', '방영중(유지)', '신규', '종영'].map(s => (
+                                                    <button 
+                                                        key={s} onClick={() => setLivePickStatusFilter(s)}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${livePickStatusFilter === s ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
+
                                             {/* 요일 필터 */}
                                             <div className="flex items-center gap-1 bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
                                                 {['전체', '월', '화', '수', '목', '금', '토', '일'].map(d => (
@@ -1492,18 +1513,29 @@
                                                     if (itemDay !== livePickDayFilter) return false;
                                                 }
 
-                                                // 2. 실제 메타유형 기준 필터링
+                                                // 2. 메타유형 필터
                                                 if (livePickTypeFilter !== '전체' && item.metaType !== livePickTypeFilter) return false;
+
+                                                // 3. 상태(라이프사이클) 필터 적용
+                                                if (livePickStatusFilter !== '전체') {
+                                                    const isKeeping = item.lifecycle === "유지";
+                                                    if (livePickStatusFilter === '방영중(유지)' && !isKeeping) return false;
+                                                    if (livePickStatusFilter === '신규' && item.lifecycle !== "신규" && item.lifecycle !== "신작") return false;
+                                                    if (livePickStatusFilter === '종영' && item.lifecycle !== "종영") return false;
+                                                }
 
                                                 return true; 
                                             }).map((item, i) => {
                                                 const history = item.history || [];
                                                 const latest = history[history.length - 1];
-                                                if (!latest) return null; // 방어 코드
+                                                if (!latest) return null; 
                                                 
-                                                const isUp = Number(latest.diff || 0) > 0;
+                                                // 전주 대비 변동 로직
+                                                const diffStr = String(latest.diff || "-");
+                                                const isUp = diffStr.includes('▲');
+                                                const isDown = diffStr.includes('▼');
+                                                const diffColor = isUp ? 'text-red-600 bg-red-100' : isDown ? 'text-blue-600 bg-blue-100' : 'text-gray-600 bg-gray-100';
                                                 
-                                                // 🔥 이 부분이 가장 중요합니다! 숫자가 들어와도 에러가 나지 않도록 String()으로 감싸주세요.
                                                 const trajString = String(latest.trajectory || "");
                                                 const trajArray = trajString.includes('→') 
                                                     ? trajString.split('→').map(v => parseFloat(v) || 0) 
@@ -1523,26 +1555,17 @@
                                                         <div className="flex justify-between items-start w-full mb-3">
                                                             <div>
                                                                 <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                                                                    {/* 채널 뱃지 */}
                                                                     <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-gray-800 text-white">
                                                                         {item.channel}
                                                                     </span>
-                                                                    
-                                                                    {/* 💡 AI 상태 뱃지 표시 영역 */}
-                                                                    {latest.type === 'lifecycle_new' && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">✨ 신작</span>}
-                                                                    {latest.type === 'lifecycle_end' && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">🏁 종영</span>}
-                                                                    {latest.type === 'drama_top' && <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">👑 슬롯 원톱</span>}
-                                                                    {latest.type === 'variety_momentum' && <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">🚀 화제성 급등</span>}
-                                                                    
-                                                                    {/* 모니터링 뱃지 */}
-                                                                    {!item.isMatched && (
-                                                                        <span className="text-[10px] text-gray-500 font-bold bg-white px-1.5 py-0.5 rounded border border-gray-200 flex items-center gap-0.5">
-                                                                            <AlertTriangle size={10}/> 모니터링 F/U
-                                                                        </span>
-                                                                    )}
+                                                                    {/* 💡 장르, 슬롯, 상태 플래그 표시 */}
+                                                                    {item.metaType && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{item.metaType}</span>}
+                                                                    {item.slot && item.slot !== "-" && <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{item.slot}</span>}
+                                                                    {(item.lifecycle === "신규" || item.lifecycle === "신작") && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">✨ 신규</span>}
+                                                                    {item.lifecycle === "종영" && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">🏁 종영</span>}
                                                                 </div>
                                                                 <h4 className="text-[15px] font-black text-gray-900 leading-tight break-keep line-clamp-2">
-                                                                    {latest.emoji || '📺'} {item.title}
+                                                                    {item.title}
                                                                 </h4>
                                                             </div>
                                                             <div className="shrink-0 ml-2 mt-1">
@@ -1550,12 +1573,15 @@
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex items-baseline gap-2 mb-3">
-                                                            <span className="text-2xl font-extrabold text-gray-800 tracking-tighter">
-                                                                {latest.rating}<span className="text-sm font-bold text-gray-400">%</span>
-                                                            </span>
-                                                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 ${isUp ? 'text-red-600 bg-red-100' : 'text-blue-600 bg-blue-100'}`}>
-                                                                {isUp ? '▲' : '▼'} {Math.abs(latest.diff).toFixed(1)}%p
+                                                        <div className="flex items-end gap-2 mb-3">
+                                                            <div className="flex flex-col">
+                                                                <span className="text-[10px] font-bold text-gray-400 mb-0.5">최신화 시청률</span>
+                                                                <span className="text-2xl font-extrabold text-gray-800 tracking-tighter leading-none">
+                                                                    {latest.rating}<span className="text-sm font-bold text-gray-400">%</span>
+                                                                </span>
+                                                            </div>
+                                                            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 mb-0.5 ${diffColor}`}>
+                                                                {diffStr !== "-" ? diffStr + "%p" : "-"}
                                                             </span>
                                                         </div>
                                                         
@@ -1566,7 +1592,7 @@
                                                             </p>
                                                         </div>
                                                     </button>
-                                                )
+                                                );
                                             })
                                         ) : (
                                             // ============================================
@@ -2265,21 +2291,24 @@
                         {selectedLivePick && (
                             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={(e) => e.target === e.currentTarget && setSelectedLivePick(null)}>
                                 <div className="bg-white w-full max-w-lg rounded-3xl p-8 space-y-6 shadow-2xl animate-slide-up">
-                                    <div className="flex justify-between items-center border-b border-gray-100 pb-4">
-                                        <div>
-                                            <div className="flex items-center gap-2 mb-1">
+                                    <div className="flex justify-between items-start border-b border-gray-100 pb-4">
+                                        <div className="flex-1 pr-4">
+                                            <div className="flex items-center gap-2 mb-2">
                                                 <span className="bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded font-bold">{selectedLivePick.channel}</span>
-                                                <span className="text-[10px] text-gray-400 font-mono">{selectedLivePick.isMatched ? `DB매칭: ${selectedLivePick.id}` : '미매칭(F/U 타겟)'}</span>
+                                                <span className="text-[10px] text-gray-400 font-mono">{selectedLivePick.isMatched ? `DB매칭: ${selectedLivePick.id}` : '매칭 안 됨'}</span>
                                             </div>
-                                            <h3 className="text-2xl font-bold text-gray-900">{selectedLivePick.title} 상세 분석</h3>
+                                            {/* OriginalTitle 및 미편성 플래그 표시 */}
+                                            <h3 className="text-2xl font-bold text-gray-900 flex items-center flex-wrap gap-2">
+                                                {selectedLivePick.originalTitle || selectedLivePick.title}
+                                                {!selectedLivePick.isMatched && <span className="text-xs font-bold text-red-500 bg-red-50 px-2 py-1 rounded border border-red-200">미편성</span>}
+                                            </h3>
                                         </div>
-                                        <button onClick={() => setSelectedLivePick(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><X size={20} className="text-gray-400"/></button>
+                                        <button onClick={() => setSelectedLivePick(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors shrink-0"><X size={20} className="text-gray-400"/></button>
                                     </div>
                                     
                                     <div className="space-y-4">
-                                        <label className="text-xs font-bold text-gray-500 block uppercase tracking-wide">주차별 AI 시청률 리포트</label>
+                                        <label className="text-xs font-bold text-gray-500 block uppercase tracking-wide">주차별 당일 시청률 추이</label>
                                         
-                                        {/* 날짜 선택 버튼 그룹 */}
                                         <div className="flex flex-wrap gap-2">
                                             {selectedLivePick.history.map((h, idx) => (
                                                 <button 
@@ -2292,16 +2321,31 @@
                                             ))}
                                         </div>
 
-                                        {/* 선택된 날짜의 코멘트 */}
                                         <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-bold text-indigo-900">
-                                                    {selectedLivePick.history[selectedHistoryIdx]?.date} 기준 브리핑
+                                                    {selectedLivePick.history[selectedHistoryIdx]?.date} 기준 분석
                                                 </span>
-                                                <span className={`text-xs font-bold px-2 py-1 rounded-md bg-white border ${selectedLivePick.history[selectedHistoryIdx]?.diff > 0 ? 'text-red-500 border-red-200' : 'text-blue-500 border-blue-200'}`}>
-                                                    등락: {selectedLivePick.history[selectedHistoryIdx]?.diff}%p
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`text-xs font-bold px-2 py-1 rounded-md bg-white border ${String(selectedLivePick.history[selectedHistoryIdx]?.diff).includes('▲') ? 'text-red-500 border-red-200' : String(selectedLivePick.history[selectedHistoryIdx]?.diff).includes('▼') ? 'text-blue-500 border-blue-200' : 'text-gray-500 border-gray-200'}`}>
+                                                        전주 대비: {selectedLivePick.history[selectedHistoryIdx]?.diff !== "-" ? selectedLivePick.history[selectedHistoryIdx]?.diff + "%p" : "-"}
+                                                    </span>
+                                                </div>
                                             </div>
+
+                                            {/* 선택된 날짜의 추이 그래프 렌더링 */}
+                                            {(() => {
+                                                const currentH = selectedLivePick.history[selectedHistoryIdx];
+                                                const trajStr = String(currentH?.trajectory || "");
+                                                const tArray = trajStr.includes('→') ? trajStr.split('→').map(v => parseFloat(v) || 0) : [];
+                                                const isUp = String(currentH?.diff).includes('▲');
+                                                return tArray.length > 0 ? (
+                                                    <div className="bg-white/50 rounded-xl p-3 flex justify-center mb-2 h-16">
+                                                        <CardSparkline data={tArray} isUp={isUp} />
+                                                    </div>
+                                                ) : null;
+                                            })()}
+
                                             <p className="text-[13px] text-indigo-800 leading-relaxed font-medium bg-white p-4 rounded-xl shadow-sm">
                                                 {selectedLivePick.history[selectedHistoryIdx]?.insight || "해당 일자의 AI 분석 코멘트가 없습니다."}
                                             </p>
@@ -2311,7 +2355,12 @@
                                     <div className="pt-2">
                                         <button 
                                             onClick={() => {
-                                                handleSearch(selectedLivePick.title);
+                                                // 💡 OriginalTitle + 채널 + 분석 내용으로 똑똑한 검색!
+                                                const insightTxt = selectedLivePick.history[selectedHistoryIdx]?.insight || "";
+                                                const targetTitle = selectedLivePick.originalTitle || selectedLivePick.title;
+                                                const searchTxt = `${targetTitle} ${selectedLivePick.channel} ${insightTxt}`.trim();
+                                                
+                                                handleSearch(searchTxt);
                                                 setSelectedLivePick(null);
                                             }}
                                             className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold text-lg hover:bg-gray-800 transition-colors shadow-lg flex items-center justify-center gap-2"
