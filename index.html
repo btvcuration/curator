@@ -470,7 +470,7 @@
             const [livePickData, setLivePickData] = useState([]);
             const [livePickDayFilter, setLivePickDayFilter] = useState(getYesterdayDay()); // 디폴트 어제
             const [livePickTypeFilter, setLivePickTypeFilter] = useState('전체'); 
-            const [livePickStatusFilter, setLivePickStatusFilter] = useState('방영중(유지)'); // ✅ 새로운 상태 필터 (디폴트: 방영중)
+            const [livePickStatusFilter, setLivePickStatusFilter] = useState('방영중');
             const [selectedLivePick, setSelectedLivePick] = useState(null); 
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
@@ -1486,7 +1486,7 @@
                                             
                                             {/* ✅ 라이프사이클(상태) 필터 추가 */}
                                             <div className="flex bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
-                                                {['전체', '방영중(유지)', '신규', '종영'].map(s => (
+                                                {['전체', '방영중', '신규', '종영'].map(s => (
                                                     <button 
                                                         key={s} onClick={() => setLivePickStatusFilter(s)}
                                                         className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${livePickStatusFilter === s ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
@@ -1539,8 +1539,11 @@
                                                 // 3. 상태(라이프사이클) 필터 적용
                                                 if (livePickStatusFilter !== '전체') {
                                                     const isKeeping = item.lifecycle === "유지";
-                                                    if (livePickStatusFilter === '방영중(유지)' && !isKeeping) return false;
-                                                    if (livePickStatusFilter === '신규' && item.lifecycle !== "신규" && item.lifecycle !== "신작") return false;
+                                                    const isNew = item.lifecycle === "신규" || item.lifecycle === "신작";
+                                                
+                                                    // '방영중' 필터는 유지와 신규(신작)를 모두 포함
+                                                    if (livePickStatusFilter === '방영중' && !(isKeeping || isNew)) return false;
+                                                    if (livePickStatusFilter === '신규' && !isNew) return false;
                                                     if (livePickStatusFilter === '종영' && item.lifecycle !== "종영") return false;
                                                 }
 
