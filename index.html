@@ -1520,11 +1520,17 @@
                                                 const history = item.history || [];
                                                 if (history.length === 0) return false;
                                                 const latest = history[history.length - 1];
-
-                                                // 1. 요일 필터
+                                            
+                                                // 1. 요일 필터 (airDays 문자열 포함 여부로 완벽 해결)
                                                 if (livePickDayFilter !== '전체') {
-                                                    const itemDay = getDayOfWeek(latest.date);
-                                                    if (itemDay !== livePickDayFilter) return false;
+                                                    if (item.airDays) {
+                                                        // "금, 토" 문자열 안에 현재 선택한 탭(예: "금")이 포함되어 있지 않으면 숨김
+                                                        if (!item.airDays.includes(livePickDayFilter)) return false;
+                                                    } else {
+                                                        // 과거 데이터 등 airDays가 비어있을 경우를 대비한 안전장치(Fallback)
+                                                        const itemDay = getDayOfWeek(latest.date);
+                                                        if (itemDay !== livePickDayFilter) return false;
+                                                    }
                                                 }
 
                                                 // 2. 메타유형 필터
