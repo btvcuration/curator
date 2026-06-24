@@ -795,102 +795,101 @@
                         keywords: r.keywords || []
                     }));
                     
-                    const candidates = dbData.map(item => {
-                        const rawTitle = item.title || "";
-                        const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
-                        const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase();
-                        
-                        const myCategory = (item.category || "").toLowerCase(); 
-                        const mySubCategory = (item.subCategory || "").toLowerCase();
-                        const myMetaType = (item.metaType || "").toLowerCase(); 
+                    // 💡 [개편된 매칭 엔진] AI 추천작을 기준으로 1:1 매칭 (지역 필터 & 중복 방지)
+                    const finalCandidates = [];
+                    const usedDbIds = new Set(); // 한 번 매칭된 DB 아이템 방어막
 
-                        const isKids = myMetaType.includes("키즈") || myMetaType.includes("애니") ||
-                                       myCategory.includes("키즈") || mySubCategory.includes("키즈") || 
-                                       myCategory.includes("유아") || mySubCategory.includes("뽀로로") || 
-                                       mySubCategory.includes("타요") || mySubCategory.includes("핑크퐁");
+                    normalizedRecs.forEach(rec => {
+                        const recTitle = rec.cleanTitle; 
+                        // 💡 AI가 내려준 지역 라벨 확보 (기본값은 국내로 세팅)
+                        const recRegion = rec.region ? rec.region : "국내"; 
                         
-                        const isDbMovie = myMetaType.includes("영화") || 
-                                          myCategory.includes("영화") || myCategory.includes("movie") || 
-                                          mySubCategory.includes("영화") || mySubCategory.includes("movie");
+                        let bestMatch = null;
+                        let highestScore = 0;
 
-                        const isDbSeries = !isDbMovie && (
-                            myMetaType.includes("시리즈") || myMetaType.includes("드라마") || myMetaType.includes("방송") ||
-                            myCategory.includes("드라마") || myCategory.includes("시리즈") || myCategory.includes("예능") || myCategory.includes("tv") ||
-                            myCategory.includes("지상파") || myCategory.includes("종편") || 
-                            mySubCategory.includes("드라마") || mySubCategory.includes("시리즈") || mySubCategory.includes("예능") || mySubCategory.includes("tv")
-                        );
-                    
-                        let score = 0;
-                        let aiReason = "";
-                        let aiTargetTitle = ""; 
-                    
-                        for (const rec of normalizedRecs) {
-                            const recTitle = rec.cleanTitle;
-                            const sim = calculateSimilarity(myTitle, recTitle);
+                        dbData.forEach(item => {
+                            if (usedDbIds.has(item.id)) return;
+
+                            const rawTitle = item.title || "";
+                            const titleForMatch = rawTitle.replace(/\(.*\)|\[.*\]/g, '').trim(); 
+                            const myTitle = titleForMatch.replace(/\s/g, '').toLowerCase(); 
                             
-                            if (sim > 0.6) { 
-                                let currentScore = sim * 100;
+                            const myCategory = String(item.category || "").toLowerCase(); 
+                            const mySubCategory = String(item.subCategory || "").toLowerCase();
+                            const myMetaType = String(item.metaType || "").toLowerCase(); 
+
+                            // 키즈/애니메이션 원천 차단
+                            const isKids = myMetaType.includes("키즈") || myMetaType.includes("애니") ||
+                                           myCategory.includes("유아") || mySubCategory.includes("뽀로로") || 
+                                           mySubCategory.includes("타요") || mySubCategory.includes("핑크퐁");
+                            if (isKids) return;
+
+                            let score = 0;
+                            
+                            if (myTitle === recTitle) {
+                                score = 100;
+                            } else if (myTitle.includes(recTitle) || recTitle.includes(myTitle)) {
+                                const minLen = Math.min(myTitle.length, recTitle.length);
+                                const maxLen = Math.max(myTitle.length, recTitle.length);
+                                
+                                if (minLen <= 2 && maxLen >= 4) {
+                                    score = 0;
+                                } else {
+                                    score = 70 + ((minLen / maxLen) * 20);
+                                }
+                            }
+
+                            if (score > 0) {
+                                const isDbMovie = myMetaType.includes("영화") || myCategory.includes("영화") || mySubCategory.includes("영화");
+                                const isDbSeries = !isDbMovie && (myMetaType.includes("시리즈") || myMetaType.includes("드라마") || myMetaType.includes("방송") || myCategory.includes("드라마") || myCategory.includes("예능"));
                                 
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
-                    
-                                if (isKids) currentScore -= 3000; 
 
-                                if (isRecSeries && isDbMovie) currentScore -= 2000; 
-                                else if (isRecMovie && isDbSeries) currentScore -= 2000; 
-                                else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) currentScore += 50; 
+                                // 1. 장르 일치 보정
+                                if (isRecSeries && isDbMovie) score -= 30; 
+                                else if (isRecMovie && isDbSeries) score -= 30; 
+                                else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) score += 10; 
 
-                                if (myTitle === recTitle) {
-                                    currentScore += 500; 
-                                } else if (myTitle.length > recTitle.length + 3) {
-                                    currentScore -= 200; 
+                                // 2. 💡 [유저 제안 반영] 지역(국내/해외) 크로스체크
+                                const isDbForeign = mySubCategory.includes("해외") || myCategory.includes("해외");
+                                
+                                if (recRegion === "해외") {
+                                    if (isDbForeign) score += 20; // 쌍방 해외면 보너스
+                                    else score -= 40; // 해외 찾는데 국내 나오면 페널티
+                                } else {
+                                    // AI가 국내라고 했거나 명시하지 않았을 때
+                                    if (isDbForeign) score -= 40; // 국내 찾는데 해외 나오면 강력한 페널티
+                                    else score += 10; // 쌍방 국내면 소소한 보너스
                                 }
                                 
-                                if (currentScore > score) {
-                                    score = currentScore;
-                                    aiReason = rec.reason;
-                                    aiTargetTitle = rec.rawTitle; 
+                                if (/\[UHD\]|\(파일럿\)/i.test(rawTitle)) score -= 2;
+
+                                if (score > highestScore && score >= 60) {
+                                    highestScore = score;
+                                    bestMatch = item;
                                 }
                             }
-                        }
-                    
-                        if (score > 0 && (myTitle.includes(targetQuery.replace(/\s/g, '')) || rawTitle.includes(targetQuery))) {
-                            score += 30;
-                        }
-                    
-                        return { 
-                            ...item, 
-                            score, 
-                            aiReason, 
-                            aiTargetTitle,
-                            prices: [item.price], 
-                            minPrice: item.price,
-                            startDate: defaultStart,
-                            endDate: defaultEnd
-                        };
-                    })
-                    .filter(item => item.score > 40)
-                    .sort((a, b) => b.score - a.score);
-                    
-                    const uniqueTitleMap = new Map();
-                    
-                    candidates.forEach(item => {
-                        const dedupKey = item.title.replace(/\[.*?\]|\(.*?\)/g, "").replace(/\s/g, "").toLowerCase();
+                        });
 
-                        if (!uniqueTitleMap.has(dedupKey)) {
-                            uniqueTitleMap.set(dedupKey, item);
-                        } else {
-                            const existing = uniqueTitleMap.get(dedupKey);
-                            if (item.title.length < existing.title.length) {
-                                uniqueTitleMap.set(dedupKey, item);
-                            }
+                        if (bestMatch) {
+                            usedDbIds.add(bestMatch.id);
+                            finalCandidates.push({ 
+                                ...bestMatch, 
+                                score: highestScore, 
+                                aiReason: rec.reason, 
+                                aiTargetTitle: rec.rawTitle,
+                                prices: [bestMatch.price], 
+                                minPrice: bestMatch.price,
+                                startDate: defaultStart,
+                                endDate: defaultEnd
+                            });
                         }
                     });
-                    
-                    const finalCandidates = Array.from(uniqueTitleMap.values()).slice(0, 50); 
 
-                    // [수정] 검색 결과 원본 저장 (필터링 기준점)
-                    setOriginalResults(finalCandidates);
+                    finalCandidates.sort((a, b) => b.score - a.score);
+                    const finalSlicedCandidates = finalCandidates.slice(0, 50);
+                    setOriginalResults(finalSlicedCandidates);
                     
                    // [수정] 현재 필터가 켜져 있다면 즉시 필터링 적용, 아니면 전체 노출
                     if (hasActiveFilters) {
