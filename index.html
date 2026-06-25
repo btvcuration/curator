@@ -861,29 +861,49 @@
                                     score -= 30; // 어린이 타겟인데 성인/일반 콘텐츠가 나오면 30점 감점
                                 }
                             
-                                const isDbMovie = myMetaType.includes("영화") || myCategory.includes("영화") || mySubCategory.includes("영화");
-                                const isDbSeries = !isDbMovie && (myMetaType.includes("시리즈") || myMetaType.includes("드라마") || myMetaType.includes("방송") || myCategory.includes("드라마") || myCategory.includes("예능"));
-                                const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
-                                const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
-
-                                // 1. 장르 일치 보정
-                                if (isRecSeries && isDbMovie) score -= 30; 
-                                else if (isRecMovie && isDbSeries) score -= 30; 
-                                else if ((isRecSeries && isDbSeries) || (isRecMovie && isDbMovie)) score += 10; 
-
-                                // 2. 💡 [유저 제안 반영] 지역(국내/해외) 크로스체크
-                                const isDbForeign = mySubCategory.includes("해외") || myCategory.includes("해외");
-                                
+                                // [1] 메타 유형 기반 직관적 장르 1:1 매칭
+                                // (콘텐츠메타유형 헤더 값 자체를 신뢰하여 판별)
+                                const isDbMovie = myMetaType.includes("영화");
+                                const isDbSeries = myMetaType.includes("드라마") || myMetaType.includes("시리즈");
+                                const isDbEnter = myMetaType.includes("예능") || myMetaType.includes("오락");
+                                const isDbDocu = myMetaType.includes("교양") || myMetaType.includes("다큐");
+                            
+                                let genreScore = 0;
+                                const targetType = rec.targetType;
+                            
+                                if (targetType === "movie" && isDbMovie) genreScore += 10;
+                                else if ((targetType === "series" || targetType === "drama") && isDbSeries) genreScore += 10;
+                                else if (targetType === "entertainment" && isDbEnter) genreScore += 10;
+                                else if (targetType === "documentary" && isDbDocu) genreScore += 10;
+                                else if (targetType === "kids") {
+                                    // 💡 [추가된 부분] kids 타입은 위에서 이미 +30/-30 처리를 했으므로 여기서 추가 감점을 하지 않고 패스합니다.
+                                    genreScore += 0; 
+                                }
+                                else genreScore -= 30; // 💡 장르가 다르면 확실하게 쳐냄 (영화 찾는데 예능 나오는 것 방지)
+                            
+                                score += genreScore;
+                            
+                                // [2] 지역(국내/해외) 판별 룰 고도화 (타이틀 매핑 보조 역할)
+                                // 💡 제안하신 룰 적용: 서브카테고리/카테고리에 '시리즈/해외시리즈', 'CJ/중화TV', '해외영화' 등이 포함된 경우
+                                const isDbForeign = mySubCategory.includes("해외") || myCategory.includes("해외") || 
+                                                    mySubCategory.includes("중화") || myCategory.includes("중화") ||
+                                                    mySubCategory.includes("AXN") || mySubCategory.includes("채널W"); // 필요시 해외 채널 추가
+                            
+                                // 💡 보완 제안: 지상파, 종편 등 확실한 한국 콘텐츠 보호
+                                const isDbDomestic = mySubCategory.includes("한국") || mySubCategory.includes("국내") || 
+                                                     myCategory.includes("지상파") || myCategory.includes("종편") || myCategory.includes("EBS");
+                            
                                 if (recRegion === "해외") {
                                     if (isDbForeign) score += 20; // 쌍방 해외면 보너스
-                                    else score -= 40; // 해외 찾는데 국내 나오면 페널티
-                                } else {
-                                    // AI가 국내라고 했거나 명시하지 않았을 때
-                                    if (isDbForeign) score -= 40; // 국내 찾는데 해외 나오면 강력한 페널티
-                                    else score += 10; // 쌍방 국내면 소소한 보너스
+                                    else if (isDbDomestic) score -= 40; // 해외 찾는데 확실한 국내가 나오면 강력 페널티
+                                    else score -= 10; // (분류가 애매한 일반 애니메이션 등은 타이틀 점수로 승부하도록 약한 페널티만)
+                                } else { 
+                                    // AI 타겟이 국내(기본값)일 때
+                                    if (isDbForeign) score -= 40; // 국내 찾는데 확실한 해외가 나오면 강력 페널티
+                                    else if (isDbDomestic) score += 10; // 쌍방 국내면 소소한 보너스
                                 }
                                 
-                                if (/\[UHD\]|\(파일럿\)/i.test(rawTitle)) score -= 2;
+                                if (/\[UHD\]|\(파일럿\)|\[가치봄\]|\[수어영화\]/i.test(rawTitle)) score -= 2;
 
                                 if (score > highestScore && score >= 60) {
                                     highestScore = score;
