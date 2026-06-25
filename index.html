@@ -927,7 +927,16 @@
                         }
                     });
 
-                    finalCandidates.sort((a, b) => b.score - a.score);
+                    finalCandidates.sort((a, b) => {
+                        // 만약 두 아이템이 모두 AI 추천에서 온 것이라면, 순서 비교
+                        const indexA = normalizedRecs.findIndex(r => r.rawTitle === a.aiTargetTitle);
+                        const indexB = normalizedRecs.findIndex(r => r.rawTitle === b.aiTargetTitle);
+                        
+                        if (indexA !== -1 && indexB !== -1) {
+                            return indexA - indexB; // AI가 준 순서 그대로 배치
+                        }
+                        return b.score - a.score; // AI 추천이 아닌 경우 점수 정렬
+                    });
                     const finalSlicedCandidates = finalCandidates.slice(0, 50);
                     setOriginalResults(finalSlicedCandidates);
                     
