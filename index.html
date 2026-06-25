@@ -792,7 +792,8 @@
                         cleanTitle: String(typeof r === 'string' ? r : r.title).replace(/\(.*\)|\[.*\]/g, '').replace(/\s/g, '').toLowerCase(),
                         reason: r.reason || "AI 추천",
                         targetType: r.type ? r.type.toLowerCase() : (targetQuery.includes("정주행") || targetQuery.includes("드라마") ? "drama" : ""), 
-                        keywords: r.keywords || []
+                        keywords: r.keywords || [],
+                        region: r.region || "국내" // ✅ 이 줄을 추가해 주세요!
                     }));
                     
                     // 💡 [개편된 매칭 엔진] AI 추천작을 기준으로 1:1 매칭 (지역 필터 & 중복 방지)
@@ -818,31 +819,50 @@
                             const mySubCategory = String(item.subCategory || "").toLowerCase();
                             const myMetaType = String(item.metaType || "").toLowerCase(); 
 
-                            // 키즈/애니메이션 원천 차단
-                            const isKids = myMetaType.includes("키즈") || myMetaType.includes("애니") ||
-                                           myCategory.includes("유아") || mySubCategory.includes("뽀로로") || 
-                                           mySubCategory.includes("타요") || mySubCategory.includes("핑크퐁");
-                            if (isKids) return;
-
-                            let score = 0;
+                            // 1. DB 아이템이 유아/키즈 특화 콘텐츠인지 판별 ('애니'는 제외하여 픽사 등 명작 애니메이션 보호)
+                            const isDbKids = myMetaType.includes("키즈") || myCategory.includes("유아") || 
+                                             mySubCategory.includes("뽀로로") || mySubCategory.includes("타요") || 
+                                             mySubCategory.includes("핑크퐁");
                             
+                            // 2. 현재 큐레이션 타겟에 '키즈/유아' 의도가 있는지 판별
+                            const isTargetKids = rec.targetType === "kids" || 
+                                                 targetQuery.includes("유아") || targetQuery.includes("키즈") || 
+                                                 targetQuery.includes("어린이") || targetQuery.includes("동요") || targetQuery.includes("애니");
+                            
+                            // 3. 상황에 따른 유동적 필터링 (일반 큐레이션일 때만 키즈 원천 차단)
+                            if (!isTargetKids && isDbKids) {
+                                return; // 다음 DB 아이템으로 건너뜀
+                            }
+                            
+                            let score = 0;
+
+                            // 1. 제목 일치도를 통한 '기본 점수' 먼저 세팅
                             if (myTitle === recTitle) {
                                 score = 100;
                             } else if (myTitle.includes(recTitle) || recTitle.includes(myTitle)) {
                                 const minLen = Math.min(myTitle.length, recTitle.length);
                                 const maxLen = Math.max(myTitle.length, recTitle.length);
                                 
-                                if (minLen <= 2 && maxLen >= 4) {
-                                    score = 0;
+                                if (minLen <= 2 && myTitle !== recTitle) {
+                                    score = 0; 
+                                } else if (maxLen >= 5 && minLen <= 3) {
+                                    score = 0; 
                                 } else {
                                     score = 70 + ((minLen / maxLen) * 20);
                                 }
                             }
-
+                            
+                            // 2. 기본 점수를 받은 후보들에 한해 가산점/페널티 적용
                             if (score > 0) {
+                                // 💡 [위치 수정] 타겟 의도에 따른 키즈 가산점/감점 보정
+                                if (isTargetKids && isDbKids) {
+                                    score += 30; // 어린이 대상 큐레이션일 경우 뽀로로 등에 30점 추가
+                                } else if (isTargetKids && !isDbKids && !myMetaType.includes("애니") && !mySubCategory.includes("애니")) {
+                                    score -= 30; // 어린이 타겟인데 성인/일반 콘텐츠가 나오면 30점 감점
+                                }
+                            
                                 const isDbMovie = myMetaType.includes("영화") || myCategory.includes("영화") || mySubCategory.includes("영화");
                                 const isDbSeries = !isDbMovie && (myMetaType.includes("시리즈") || myMetaType.includes("드라마") || myMetaType.includes("방송") || myCategory.includes("드라마") || myCategory.includes("예능"));
-                                
                                 const isRecSeries = rec.targetType.includes("drama") || rec.targetType.includes("series") || rec.targetType.includes("tv");
                                 const isRecMovie = rec.targetType.includes("movie") || rec.targetType.includes("film");
 
