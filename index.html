@@ -1572,17 +1572,17 @@
                                             // ============================================
                                             livePickData.filter(item => {
                                                 const history = item.history || [];
-                                                if (history.length === 0) return false;
-                                                const latest = history[history.length - 1];
+                                                // 💡 [수정] 방영예정작은 시청률(history)이 0개여도 통과 허용!
+                                                if (history.length === 0 && item.lifecycle !== "방영예정") return false;
+                                                
+                                                const latest = history[history.length - 1]; // 방영예정작이면 undefined
                                             
-                                                // 1. 요일 필터 (airDays 문자열 포함 여부로 완벽 해결)
+                                                // 1. 요일 필터
                                                 if (livePickDayFilter !== '전체') {
                                                     if (item.airDays) {
-                                                        // "금, 토" 문자열 안에 현재 선택한 탭(예: "금")이 포함되어 있지 않으면 숨김
                                                         if (!item.airDays.includes(livePickDayFilter)) return false;
                                                     } else {
-                                                        // 과거 데이터 등 airDays가 비어있을 경우를 대비한 안전장치(Fallback)
-                                                        const itemDay = getDayOfWeek(latest.date);
+                                                        const itemDay = latest ? getDayOfWeek(latest.date) : "";
                                                         if (itemDay !== livePickDayFilter) return false;
                                                     }
                                                 }
@@ -1596,10 +1596,9 @@
                                                     const isNew = item.lifecycle === "신규" || item.lifecycle === "신작";
                                                     const isUpcoming = item.lifecycle === "방영예정";
                                                 
-                                                    // '방영중' 필터는 유지와 신규(신작)를 모두 포함
                                                     if (livePickStatusFilter === '방영중' && !(isKeeping || isNew)) return false;
                                                     if (livePickStatusFilter === '신규' && !isNew) return false;
-                                                    if (livePickStatusFilter === '방영예정' && !isUpcoming) return false; // 💡 방영예정 분기 추가
+                                                    if (livePickStatusFilter === '방영예정' && !isUpcoming) return false;
                                                     if (livePickStatusFilter === '종영' && item.lifecycle !== "종영") return false;
                                                 }
 
@@ -1607,19 +1606,17 @@
                                             }).map((item, i) => {
                                                 const history = item.history || [];
                                                 const latest = history[history.length - 1];
-                                                if (!latest) return null; 
                                                 
-                                                // 전주 대비 변동 로직
-                                                const diffStr = String(latest.diff || "-");
+                                                // 💡 [수정] 방영예정작일 경우의 분기 처리
+                                                const isUpcoming = item.lifecycle === "방영예정" && !latest;
+                                                
+                                                const diffStr = latest ? String(latest.diff || "-") : "-";
                                                 const isUp = diffStr.includes('▲');
                                                 const isDown = diffStr.includes('▼');
-                                                const diffColor = isUp ? 'text-red-600 bg-red-100' : isDown ? 'text-blue-600 bg-blue-100' : 'text-gray-600 bg-gray-100';
+                                                const diffColor = isUpcoming ? 'text-emerald-600 bg-emerald-100' : (isUp ? 'text-red-600 bg-red-100' : isDown ? 'text-blue-600 bg-blue-100' : 'text-gray-600 bg-gray-100');
                                                 
-                                                // ✅ [수정 핵심] 실제 일자별 시청률과 날짜 추출 (최근 4일치)
                                                 const recentHistory = history.slice(-4); 
                                                 const chartData = recentHistory.map(h => h.rating);
-                                                
-                                                // 💡 [개선] yyyy.MM.dd 포맷일 경우 차트 하단에는 MM.dd 만 깔끔하게 노출되도록 파싱
                                                 const chartLabels = recentHistory.map(h => {
                                                     const dateStr = String(h.date).replace(/'/g, '');
                                                     const pts = dateStr.split('.');
@@ -1627,8 +1624,6 @@
                                                 });
                                                 
                                                 const style = CARD_STYLES[i % CARD_STYLES.length];
-                                                
-                                                // 타이틀이 "-" 이거나 비어있을 경우 원제(OriginalTitle) 노출
                                                 const displayTitle = (item.title === "-" || !item.title) ? item.originalTitle : item.title;
 
                                                 return (
@@ -1636,7 +1631,8 @@
                                                         key={item.id} 
                                                         onClick={() => {
                                                             setSelectedLivePick(item);
-                                                            setSelectedHistoryIdx(history.length - 1);
+                                                            // 히스토리가 없으면 0으로 안전하게 매핑
+                                                            setSelectedHistoryIdx(history.length > 0 ? history.length - 1 : 0);
                                                         }}
                                                         className={`flex flex-col h-full p-4 md:p-5 rounded-2xl border shadow-sm transition-all text-left relative overflow-hidden ${style.bg} ${style.border} hover:-translate-y-1 hover:shadow-md w-full`}
                                                     >
@@ -1649,7 +1645,6 @@
                                                                     {item.metaType && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{item.metaType}</span>}
                                                                     {item.slot && item.slot !== "-" && <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{item.slot}</span>}
                                                                     {(item.lifecycle === "신규" || item.lifecycle === "신작") && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">✨ 신규</span>}
-                                                                    {/* 💡 방영예정 뱃지 추가 */}
                                                                     {item.lifecycle === "방영예정" && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">⏳ 방영예정</span>}
                                                                     {item.lifecycle === "종영" && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">🏁 종영</span>}
                                                                 </div>
@@ -1658,27 +1653,28 @@
                                                                 </h4>
                                                             </div>
                                                             <div className="shrink-0 ml-2 mt-1">
-                                                                {/* ✅ [수정 핵심] 새로운 데이터와 날짜 라벨을 넘겨줍니다 */}
                                                                 <CardSparkline data={chartData} labels={chartLabels} isUp={isUp} />
                                                             </div>
                                                         </div>
 
+                                                        {/* 💡 [수정] 방영예정작일 때는 '-' 및 '대기중' 텍스트 노출 */}
                                                         <div className="flex items-end gap-2 mb-3">
                                                             <div className="flex flex-col">
-                                                                <span className="text-[10px] font-bold text-gray-400 mb-0.5">최신화 시청률</span>
-                                                                <span className="text-2xl font-extrabold text-gray-800 tracking-tighter leading-none">
-                                                                    {latest.rating}<span className="text-sm font-bold text-gray-400">%</span>
+                                                                <span className="text-[10px] font-bold text-gray-400 mb-0.5">{isUpcoming ? '상태' : '최신화 시청률'}</span>
+                                                                <span className={`font-extrabold tracking-tighter leading-none ${isUpcoming ? 'text-lg text-emerald-700' : 'text-2xl text-gray-800'}`}>
+                                                                    {isUpcoming ? '방영 대기중' : latest?.rating}<span className="text-sm font-bold text-gray-400">{isUpcoming ? '' : '%'}</span>
                                                                 </span>
                                                             </div>
                                                             <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5 mb-0.5 ${diffColor}`}>
-                                                                {diffStr !== "-" ? diffStr + "%p" : "-"}
+                                                                {isUpcoming ? 'Coming Soon' : (diffStr !== "-" ? diffStr + "%p" : "-")}
                                                             </span>
                                                         </div>
                                                         
+                                                        {/* 💡 [수정] 방영예정작용 안내 코멘트 삽입 */}
                                                         <div className="mt-auto pt-3 border-t border-gray-200/50">
                                                             <p className="text-[11px] text-gray-600 leading-relaxed break-keep line-clamp-3">
                                                                 <Sparkles size={10} className="inline mr-1 text-indigo-500" />
-                                                                {latest.insight || "AI 분석 데이터가 없습니다."}
+                                                                {isUpcoming ? "첫 방송 이후부터 시청률 추적 및 인사이트 분석이 자동으로 개시됩니다." : (latest?.insight || "AI 분석 데이터가 없습니다.")}
                                                             </p>
                                                         </div>
                                                     </button>
@@ -2414,20 +2410,24 @@
                                         <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-3">
                                             <div className="flex items-center justify-between">
                                                 <span className="text-sm font-bold text-indigo-900">
-                                                    {selectedLivePick.history[selectedHistoryIdx]?.date} 기준 분석
+                                                    {/* 💡 방영예정작인 경우 안내 텍스트 변경 */}
+                                                    {selectedLivePick.history.length > 0 ? `${selectedLivePick.history[selectedHistoryIdx]?.date} 기준 분석` : '방영 예정작 사전 안내'}
                                                 </span>
+                                                {selectedLivePick.history.length > 0 && (
                                                 <div className="flex items-center gap-2">
                                                     <span className={`text-xs font-bold px-2 py-1 rounded-md bg-white border ${String(selectedLivePick.history[selectedHistoryIdx]?.diff).includes('▲') ? 'text-red-500 border-red-200' : String(selectedLivePick.history[selectedHistoryIdx]?.diff).includes('▼') ? 'text-blue-500 border-blue-200' : 'text-gray-500 border-gray-200'}`}>
                                                         전주 대비: {selectedLivePick.history[selectedHistoryIdx]?.diff !== "-" ? selectedLivePick.history[selectedHistoryIdx]?.diff + "%p" : "-"}
                                                     </span>
                                                 </div>
+                                                )}
                                             </div>
 
                                             {/* 선택된 날짜의 추이 그래프 렌더링 */}
                                             {(() => {
+                                                if (selectedLivePick.history.length === 0) return null; // 💡 히스토리가 없으면 그래프 숨김
+
                                                 const currentH = selectedLivePick.history[selectedHistoryIdx];
                                                 const isUp = String(currentH?.diff).includes('▲');
-                                                // ✅ [수정 핵심] 선택한 날짜까지의 히스토리 중 최근 5개 추출하여 렌더링
                                                 const historyUpToIdx = selectedLivePick.history.slice(0, selectedHistoryIdx + 1).slice(-5);
                                                 const chartData = historyUpToIdx.map(h => h.rating);
                                                 const chartLabels = historyUpToIdx.map(h => h.date);
@@ -2440,7 +2440,8 @@
                                             })()}
 
                                             <p className="text-[13px] text-indigo-800 leading-relaxed font-medium bg-white p-4 rounded-xl shadow-sm">
-                                                {selectedLivePick.history[selectedHistoryIdx]?.insight || "해당 일자의 AI 분석 코멘트가 없습니다."}
+                                                {/* 💡 방영예정작인 경우 분석 코멘트를 친절한 안내로 대체 */}
+                                                {selectedLivePick.history.length > 0 ? (selectedLivePick.history[selectedHistoryIdx]?.insight || "해당 일자의 AI 분석 코멘트가 없습니다.") : "첫 방송 시작 시점부터 AI 닐슨 시청률 추적 및 인사이트 분석이 자동으로 개시됩니다. 방송일 이후에 다시 확인해 주세요!"}
                                             </p>
                                         </div>
                                     </div>
