@@ -474,14 +474,20 @@
             const [selectedLivePick, setSelectedLivePick] = useState(null); 
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
-            // 날짜(MM.dd)를 요일로 역산 (오류 완벽 수정)
+            // 💡 [개선] 연도(yyyy.MM.dd) 포함 여부에 따른 요일 역산 로직
             const getDayOfWeek = (dateStr) => {
                 if (!dateStr) return "";
-                const currentYear = new Date().getFullYear();
                 const parts = String(dateStr).replace(/'/g, '').split('.');
-                if(parts.length < 2) return "";
-                const date = new Date(currentYear, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
-                return ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+                
+                if (parts.length === 3) {
+                    const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                    return ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+                } else if (parts.length === 2) {
+                    const currentYear = new Date().getFullYear();
+                    const date = new Date(currentYear, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+                    return ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+                }
+                return "";
             };
 
             // API 호출 함수
@@ -1534,7 +1540,7 @@
                                             
                                             {/* ✅ 라이프사이클(상태) 필터 추가 */}
                                             <div className="flex bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
-                                                {['전체', '방영중', '신규', '종영'].map(s => (
+                                                {['전체', '방영중', '방영예정', '신규', '종영'].map(s => (
                                                     <button 
                                                         key={s} onClick={() => setLivePickStatusFilter(s)}
                                                         className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${livePickStatusFilter === s ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
@@ -1588,10 +1594,12 @@
                                                 if (livePickStatusFilter !== '전체') {
                                                     const isKeeping = item.lifecycle === "유지";
                                                     const isNew = item.lifecycle === "신규" || item.lifecycle === "신작";
+                                                    const isUpcoming = item.lifecycle === "방영예정";
                                                 
                                                     // '방영중' 필터는 유지와 신규(신작)를 모두 포함
                                                     if (livePickStatusFilter === '방영중' && !(isKeeping || isNew)) return false;
                                                     if (livePickStatusFilter === '신규' && !isNew) return false;
+                                                    if (livePickStatusFilter === '방영예정' && !isUpcoming) return false; // 💡 방영예정 분기 추가
                                                     if (livePickStatusFilter === '종영' && item.lifecycle !== "종영") return false;
                                                 }
 
@@ -1607,14 +1615,20 @@
                                                 const isDown = diffStr.includes('▼');
                                                 const diffColor = isUp ? 'text-red-600 bg-red-100' : isDown ? 'text-blue-600 bg-blue-100' : 'text-gray-600 bg-gray-100';
                                                 
-                                                // ✅ [수정 핵심] 기존 문자열 파싱 대신, 실제 일자별 시청률과 날짜 추출 (최근 4일치)
+                                                // ✅ [수정 핵심] 실제 일자별 시청률과 날짜 추출 (최근 4일치)
                                                 const recentHistory = history.slice(-4); 
                                                 const chartData = recentHistory.map(h => h.rating);
-                                                const chartLabels = recentHistory.map(h => h.date);
+                                                
+                                                // 💡 [개선] yyyy.MM.dd 포맷일 경우 차트 하단에는 MM.dd 만 깔끔하게 노출되도록 파싱
+                                                const chartLabels = recentHistory.map(h => {
+                                                    const dateStr = String(h.date).replace(/'/g, '');
+                                                    const pts = dateStr.split('.');
+                                                    return pts.length === 3 ? `${pts[1]}.${pts[2]}` : dateStr;
+                                                });
                                                 
                                                 const style = CARD_STYLES[i % CARD_STYLES.length];
                                                 
-                                                // ✅ [수정 핵심] 타이틀이 "-" 이거나 비어있을 경우 원제(OriginalTitle) 노출
+                                                // 타이틀이 "-" 이거나 비어있을 경우 원제(OriginalTitle) 노출
                                                 const displayTitle = (item.title === "-" || !item.title) ? item.originalTitle : item.title;
 
                                                 return (
@@ -1635,6 +1649,8 @@
                                                                     {item.metaType && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">{item.metaType}</span>}
                                                                     {item.slot && item.slot !== "-" && <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200">{item.slot}</span>}
                                                                     {(item.lifecycle === "신규" || item.lifecycle === "신작") && <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">✨ 신규</span>}
+                                                                    {/* 💡 방영예정 뱃지 추가 */}
+                                                                    {item.lifecycle === "방영예정" && <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">⏳ 방영예정</span>}
                                                                     {item.lifecycle === "종영" && <span className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">🏁 종영</span>}
                                                                 </div>
                                                                 <h4 className="text-[15px] font-black text-gray-900 leading-tight break-keep line-clamp-2">
