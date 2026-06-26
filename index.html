@@ -292,15 +292,15 @@
             
             const strokeColor = isUp ? '#ef4444' : '#3b82f6'; 
 
-            // 💡 데이터 개수에 따라 X축 간격을 확보하여 동적 너비 계산 (스크롤 대비)
-            const nodeSpacing = showValues ? 45 : 0; // 팝업에서는 노드당 45px 확보
+            // 💡 [개선] 노드 간격을 45 -> 65로 대폭 넓혀서 데이터가 7~8개만 되어도 스크롤이 확실히 생기도록 조정
+            const nodeSpacing = showValues ? 65 : 0; 
             const svgWidth = showValues ? Math.max(100, data.length * nodeSpacing) : 100;
 
-            const padX = showValues ? 20 : 2; 
+            const padX = showValues ? 30 : 2; // 양끝 여백도 늘려줌
             const getX = (i) => padX + (i / (data.length - 1 || 1)) * (svgWidth - padX * 2);
 
             const padYTop = showValues ? 30 : 5; 
-            const padYBot = showValues ? 25 : 10; // X축 날짜 폰트 확대를 위해 여백 증가
+            const padYBot = showValues ? 25 : 10; 
             const getY = (val) => {
                 if (val === 0) return 100;
                 const normalized = (val - min) / range;
@@ -311,9 +311,8 @@
 
             return (
                 <div className={`flex flex-col ${showValues ? 'w-full' : 'w-20 md:w-24 shrink-0'}`}>
-                    {/* 💡 팝업일 때는 가로 스크롤(overflow-x-auto)을 허용하고 숨김 처리 */}
-                    <div className={`w-full ${showValues ? 'overflow-x-auto scrollbar-hide' : 'h-8'}`}>
-                        {/* 💡 preserveAspectRatio 삭제, 동적 너비 적용 */}
+                    {/* 💡 [개선] scrollbar-hide 삭제 및 하단 여백(pb-3) 추가로 데스크톱에서도 스크롤바가 명확히 보이도록 수정 */}
+                    <div className={`w-full ${showValues ? 'overflow-x-auto pb-3' : 'h-8'}`}>
                         <svg 
                             viewBox={`0 0 ${svgWidth} 100`} 
                             className={`${showValues ? 'h-32 min-w-full' : 'w-full h-full'} overflow-visible`} 
@@ -333,7 +332,6 @@
                                 const x = getX(i);
                                 const y = getY(val);
                                 
-                                // 💡 팝업에서는 selectedIndex와 일치하는지 여부로 강조 표시
                                 const isFocused = showValues ? (i === selectedIndex) : (i === data.length - 1);
 
                                 return (
@@ -350,7 +348,6 @@
                                             className="transition-all duration-300"
                                         />
                                         
-                                        {/* 💡 시청률 수치 (포커스 된 노드는 색상 진하게) */}
                                         {showValues && (
                                             <text
                                                 x={x} y={y - 10}
@@ -362,7 +359,6 @@
                                             </text>
                                         )}
 
-                                        {/* 💡 하단 X축 날짜 (SVG 내부로 통합하여 위치 어긋남 원천 차단) */}
                                         {showValues && labels && (
                                             <text
                                                 x={x} y="98"
@@ -379,7 +375,6 @@
                         </svg>
                     </div>
                     
-                    {/* 미니 스파크라인(리스트)용 하단 라벨 (기존 유지) */}
                     {!showValues && labels && labels.length > 0 && (
                         <div className="w-full mt-2 pt-1 border-t border-gray-100/80 relative h-4">
                             {labels.map((lbl, i) => (
