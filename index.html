@@ -281,45 +281,89 @@
             </div>
         );
         
-        // 💡 [수정] widthClass와 heightClass 파라미터를 추가하여 크기를 자유롭게 조절할 수 있도록 개선
-        const CardSparkline = ({ data, labels, isUp, widthClass = "w-20 md:w-24 shrink-0", heightClass = "h-8" }) => {
+        // 💡 [수정] showValues 파라미터 추가 및 X/Y 좌표 기반 완벽 정렬 렌더링
+        const CardSparkline = ({ data, labels, isUp, widthClass = "w-20 md:w-24 shrink-0", heightClass = "h-8", showValues = false }) => {
             const validData = data.filter(v => v > 0);
             if(validData.length === 0) return null;
             
-            const min = Math.min(...validData) * 0.9;
+            const min = Math.min(...validData) * 0.95;
             const max = Math.max(...validData) * 1.05;
             const range = max - min === 0 ? 1 : max - min;
             
             const strokeColor = isUp ? '#ef4444' : '#3b82f6'; // 상승 빨강, 하락 파랑
 
+            // 💡 [핵심] X, Y 좌표를 % 비율로 계산하여 원, 텍스트, 하단 라벨의 위치를 1:1로 완벽 동기화합니다.
+            const padX = showValues ? 8 : 2; // 수치가 보일 땐 좌우 여백을 더 줌
+            const getX = (i) => padX + (i / (data.length - 1 || 1)) * (100 - padX * 2);
+
+            const padYTop = showValues ? 30 : 5; // 수치 텍스트가 들어갈 상단 여백 확보
+            const padYBot = 10;
+            const getY = (val) => {
+                if (val === 0) return 100;
+                const normalized = (val - min) / range;
+                return 100 - padYBot - (normalized * (100 - padYTop - padYBot));
+            };
+
+            const points = data.map((val, i) => `${getX(i)},${getY(val)}`).join(' ');
+
             return (
-                // 💡 전달받은 폭(widthClass) 적용
                 <div className={`flex flex-col ${widthClass}`}>
-                    {/* 💡 전달받은 높이(heightClass) 적용 */}
-                    <div className={`w-full flex flex-col justify-end ${heightClass}`}>
-                        <svg viewBox="0 -5 100 110" className="w-full h-full overflow-visible">
+                    <div className={`w-full ${heightClass}`}>
+                        {/* 💡 preserveAspectRatio="none"을 주어 공간이 넓어지면 그래프도 시원하게 펴지게 만듭니다 */}
+                        <svg viewBox="0 0 100 100" className="w-full h-full overflow-visible" preserveAspectRatio="none">
                             <polyline 
-                                points={data.map((val, i) => `${(i / (data.length - 1 || 1)) * 100},${val === 0 ? 100 : 100 - ((val - min) / range) * 100}`).join(' ')} 
+                                points={points} 
                                 fill="none" 
                                 stroke={strokeColor} 
-                                strokeWidth="5" 
+                                strokeWidth={showValues ? "2" : "4"} 
                                 strokeLinecap="round" 
                                 strokeLinejoin="round" 
                                 className="opacity-40" 
                             />
                             {data.map((val, i) => {
                                 if(val === 0) return null;
-                                const x = (i / (data.length - 1 || 1)) * 100;
-                                const y = 100 - ((val - min) / range) * 100;
-                                return <circle key={i} cx={x} cy={y} r="6" fill={i === data.length - 1 ? strokeColor : "#cbd5e1"} />;
+                                const x = getX(i);
+                                const y = getY(val);
+                                const isLast = i === data.length - 1;
+                                return (
+                                    <g key={i}>
+                                        <circle 
+                                            cx={x} 
+                                            cy={y} 
+                                            r={isLast ? (showValues ? "4" : "6") : (showValues ? "3" : "4")} 
+                                            fill={isLast ? strokeColor : "#cbd5e1"} 
+                                            stroke="#fff"
+                                            strokeWidth={showValues ? "1.5" : "0"}
+                                        />
+                                        {/* 💡 showValues가 true일 때만 시청률 수치 렌더링 */}
+                                        {showValues && (
+                                            <text
+                                                x={x}
+                                                y={y - 8}
+                                                textAnchor="middle"
+                                                fontSize="8"
+                                                fontWeight={isLast ? "800" : "600"}
+                                                fill={isLast ? strokeColor : "#64748b"}
+                                                className="select-none drop-shadow-sm"
+                                            >
+                                                {val}
+                                            </text>
+                                        )}
+                                    </g>
+                                );
                             })}
                         </svg>
                     </div>
                     {/* 하단 날짜 라벨 렌더링 */}
                     {labels && labels.length > 0 && (
-                        <div className="flex justify-between w-full mt-2 pt-1 border-t border-gray-100/80">
+                        <div className="w-full mt-3 pt-2 border-t border-gray-100/80 relative h-4">
                             {labels.map((lbl, i) => (
-                                <span key={i} className={`text-[10px] font-mono tracking-tighter ${i === labels.length - 1 ? 'text-gray-800 font-extrabold' : 'text-gray-400'}`}>
+                                <span 
+                                    key={i} 
+                                    // 💡 하단 라벨의 위치(left)를 위에서 계산한 원(x)의 위치와 똑같이 강제 적용
+                                    style={{ left: `${getX(i)}%`, transform: 'translateX(-50%)' }}
+                                    className={`absolute text-[9px] md:text-[10px] font-mono tracking-tighter ${i === labels.length - 1 ? 'text-gray-800 font-extrabold' : 'text-gray-400'}`}
+                                >
                                     {lbl}
                                 </span>
                             ))}
@@ -328,7 +372,6 @@
                 </div>
             );
         };
-
         const App = () => {
             // [NEW] 트렌드 새로고침 로딩 상태
             const [isTrendRefreshing, setIsTrendRefreshing] = useState(false);
@@ -2427,24 +2470,28 @@
 
                                             {/* 선택된 날짜의 추이 그래프 렌더링 */}
                                             {(() => {
-                                                if (selectedLivePick.history.length === 0) return null; // 히스토리가 없으면 그래프 숨김
+                                                if (selectedLivePick.history.length === 0) return null; 
 
                                                 const currentH = selectedLivePick.history[selectedHistoryIdx];
                                                 const isUp = String(currentH?.diff).includes('▲');
                                                 const historyUpToIdx = selectedLivePick.history.slice(0, selectedHistoryIdx + 1).slice(-5);
                                                 const chartData = historyUpToIdx.map(h => h.rating);
-                                                const chartLabels = historyUpToIdx.map(h => h.date);
+                                                const chartLabels = historyUpToIdx.map(h => {
+                                                    const dateStr = String(h.date).replace(/'/g, '');
+                                                    const pts = dateStr.split('.');
+                                                    return pts.length === 3 ? `${pts[1]}.${pts[2]}` : dateStr;
+                                                });
 
                                                 return chartData.length > 0 ? (
-                                                    // 💡 [수정] 박스 크기 확장 및 배경을 하얗고 깔끔하게 분리
-                                                    <div className="bg-white rounded-2xl p-6 flex justify-center w-full mb-3 shadow-sm border border-indigo-50">
-                                                        {/* 💡 [수정] 폭을 100%로 꽉 채우고 높이를 시원하게 키움 */}
+                                                    // 💡 [수정] 박스 위쪽 패딩(pt-8)을 더 주어 텍스트가 짤리지 않게 하고 공간을 시원하게 씁니다.
+                                                    <div className="bg-white rounded-2xl p-6 pt-8 flex justify-center w-full mb-3 shadow-sm border border-indigo-50">
                                                         <CardSparkline 
                                                             data={chartData} 
                                                             labels={chartLabels} 
                                                             isUp={isUp} 
                                                             widthClass="w-full max-w-sm" 
                                                             heightClass="h-24 md:h-32" 
+                                                            showValues={true} // 💡 팝업에서는 시청률 수치를 보여주도록 스위치 ON!
                                                         />
                                                     </div>
                                                 ) : null;
