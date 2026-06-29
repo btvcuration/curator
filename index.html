@@ -281,7 +281,7 @@
             </div>
         );
         
-        // 💡 [수정] 전체 데이터를 그리고 선택된 노드(selectedIndex)만 포커싱하도록 개선
+        // 💡 [수정] 카드 형태에서의 그래프 찌그러짐 현상(preserveAspectRatio="none")을 해결
         const CardSparkline = ({ data, labels, isUp, showValues = false, selectedIndex = -1, onNodeClick }) => {
             const validData = data.filter(v => v > 0);
             if(validData.length === 0) return null;
@@ -292,32 +292,31 @@
             
             const strokeColor = isUp ? '#ef4444' : '#3b82f6'; 
 
-            // 💡 [개선] 노드 간격을 45 -> 65로 대폭 넓혀서 데이터가 7~8개만 되어도 스크롤이 확실히 생기도록 조정
             const nodeSpacing = showValues ? 65 : 0; 
             const svgWidth = showValues ? Math.max(100, data.length * nodeSpacing) : 100;
+            
+            // 💡 [핵심] 카드용 미니 그래프의 높이 비율(viewBox)을 조정하여 점(Circle)이 타원으로 찌그러지지 않게 함
+            const svgHeight = showValues ? 100 : 45; 
 
-            // 💡 [수정] 카드 형태(showValues=false)일 때 X축 여백을 넓혀 날짜 라벨과 점이 일치하도록 조정
-            const padX = showValues ? 30 : 15; 
+            const padX = showValues ? 30 : 12; // 양끝 여백 확보하여 라벨과 점 위치 동기화
             const getX = (i) => padX + (i / (data.length - 1 || 1)) * (svgWidth - padX * 2);
 
-            // 💡 [수정] 카드 그래프 상하 진폭 가시성을 위해 Y축 여백 조정
-            const padYTop = showValues ? 30 : 10; 
-            const padYBot = showValues ? 25 : 10; 
+            const padYTop = showValues ? 30 : 8; 
+            const padYBot = showValues ? 25 : 8; 
             const getY = (val) => {
-                if (val === 0) return 100;
+                if (val === 0) return svgHeight;
                 const normalized = (val - min) / range;
-                return 100 - padYBot - (normalized * (100 - padYTop - padYBot));
+                return svgHeight - padYBot - (normalized * (svgHeight - padYTop - padYBot));
             };
 
             const points = data.map((val, i) => `${getX(i)},${getY(val)}`).join(' ');
 
             return (
-                <div className={`flex flex-col ${showValues ? 'w-full' : 'w-24 md:w-32 shrink-0'}`}>
-                    {/* 💡 [개선] 카드 형태일 때 영역을 넓혀(h-12) 그래프 진폭을 명확하게 표시 */}
-                    <div className={`w-full ${showValues ? 'overflow-x-auto pb-3' : 'h-12'}`}>
+                <div className={`flex flex-col ${showValues ? 'w-full' : 'w-28 md:w-36 shrink-0'}`}>
+                    <div className={`w-full ${showValues ? 'overflow-x-auto pb-3' : 'h-14'}`}>
                         <svg 
-                            viewBox={`0 0 ${svgWidth} 100`} 
-                            preserveAspectRatio={showValues ? "xMidYMid meet" : "none"} // 비율 무시하고 꽉 채움
+                            viewBox={`0 0 ${svgWidth} ${svgHeight}`} 
+                            // 💡 preserveAspectRatio="none"를 삭제하여 원형(Circle) 왜곡 방지
                             className={`${showValues ? 'h-32 min-w-full' : 'w-full h-full'} overflow-visible`} 
                             style={{ width: showValues ? `${svgWidth}px` : '100%' }}
                         >
@@ -325,7 +324,7 @@
                                 points={points} 
                                 fill="none" 
                                 stroke={strokeColor} 
-                                strokeWidth={showValues ? "2" : "3"} 
+                                strokeWidth={showValues ? "2" : "2.5"} 
                                 strokeLinecap="round" 
                                 strokeLinejoin="round" 
                                 className="opacity-30 transition-all duration-300" 
@@ -345,9 +344,9 @@
                                     >
                                         <circle 
                                             cx={x} cy={y} 
-                                            r={isFocused ? (showValues ? "5" : "5") : (showValues ? "3.5" : "3")} 
+                                            r={isFocused ? (showValues ? "5" : "4") : (showValues ? "3.5" : "2.5")} 
                                             fill={isFocused ? strokeColor : (showValues ? "#94a3b8" : "#cbd5e1")} 
-                                            stroke="#fff" strokeWidth={showValues ? "2" : "0"}
+                                            stroke="#fff" strokeWidth={showValues ? "2" : "1"}
                                             className="transition-all duration-300"
                                         />
                                         
@@ -379,12 +378,12 @@
                     </div>
                     
                     {!showValues && labels && labels.length > 0 && (
-                        <div className="w-full mt-2 pt-1 border-t border-gray-100/80 relative h-4">
+                        <div className="w-full mt-1.5 pt-1 border-t border-gray-100/80 relative h-4">
                             {labels.map((lbl, i) => (
                                 <span 
                                     key={i} 
                                     style={{ left: `${getX(i)}%`, transform: 'translateX(-50%)' }}
-                                    className={`absolute text-[9px] md:text-[10px] font-mono tracking-tighter ${i === labels.length - 1 ? 'text-gray-800 font-extrabold' : 'text-gray-400'}`}
+                                    className={`absolute text-[8px] md:text-[9px] font-mono tracking-tighter ${i === labels.length - 1 ? 'text-gray-800 font-extrabold' : 'text-gray-400'}`}
                                 >
                                     {lbl}
                                 </span>
