@@ -701,39 +701,40 @@
 
                         if (cached && (new Date().getTime() - cached.timestamp < CACHE_EXPIRY_MS)) {
                             loadedData = cached.data;
-                            console.log("✅ 로컬 영화 DB 사용 (IndexedDB)");
+                            console.log("✅ 로컬 영화 DB 사용");
                         }
 
                         if (!loadedData) {
                             console.log("⬇️ 초고속 CSV 정적 데이터 다운로드 중...");
-                            // 💡 새로 생성하신 구글 드라이브 CSV 다이렉트 링크 (ID 적용 완료)
-                            const CSV_URL = "https://drive.google.com/uc?export=download&id=1XGSRy1qk2MTnw8vhf8CsiXsCz2XQdj9i";
+                            
+                            // 💡 기존 GAS_API_URL(jolly-sun-635f) 뒤에 "csv"를 붙여 우회 워커 호출
+                            const CSV_URL = GAS_API_URL + "csv"; 
                             
                             const res = await fetch(CSV_URL);
                             const arrayBuffer = await res.arrayBuffer();
                             
-                            // 💡 이미 index.html 헤더에 있는 SheetJS(xlsx) 라이브러리를 활용해 CSV 파싱
+                            // SheetJS(xlsx) 라이브러리를 활용해 바이너리(ArrayBuffer)를 읽음
                             const workbook = XLSX.read(arrayBuffer, { type: 'array' });
                             const firstSheetName = workbook.SheetNames[0];
                             const worksheet = workbook.Sheets[firstSheetName];
                             
-                            // 2차원 배열 형태로 추출 (GAS의 getSheetData 로직과 동일하게 맞춤)
+                            // 2차원 배열 형태로 추출 (헤더 포함)
                             const rawData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
                             
                             if (rawData && rawData.length > 1) {
                                 const headers = rawData[0];
                                 
-                                // 헤더 인덱스 동적 탐색 (GAS와 완벽 동일)
+                                // 엑셀 헤더 컬럼 인덱스 찾기
                                 const categoryIdx = headers.findIndex(h => String(h).includes('카테고리구분'));
                                 const subCategoryIdx = headers.findIndex(h => String(h).includes('서브카테고리'));
                                 const metaTypeIdx = headers.findIndex(h => String(h).includes('콘텐츠메타유형') || String(h).includes('메타유형'));
                                 const productIdx = headers.findIndex(h => String(h).includes('콘텐츠상품명') || String(h).includes('상품명'));
-                                const titleIdx = headers.findIndex(h => String(h).includes('시리즈ID'));
-                                const idIdx = 3; // 기존 로직 기준 4번째 열
+                                const titleIdx = headers.findIndex(h => String(h).includes('시리즈ID')); // 타이틀이 들어있는 열
+                                const idIdx = 3; // CS ID가 들어있는 D열 (0부터 시작하므로 3)
                                 const priceIdx = headers.findIndex(h => String(h).includes('가격') || String(h).includes('PPV'));
                                 const nScreenIdx = headers.findIndex(h => String(h).includes('N스크린여부'));
 
-                                // JSON 객체 배열로 변환
+                                // 데이터 배열을 JSON 객체 배열로 변환
                                 loadedData = rawData.slice(1).map(row => {
                                     let priceVal = row[priceIdx];
                                     if (typeof priceVal === 'string') priceVal = parseInt(priceVal.replace(/[^0-9]/g, ''), 10);
