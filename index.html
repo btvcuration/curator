@@ -710,9 +710,6 @@
                             const CSV_URL = GAS_API_URL + "csv"; 
                             
                             const res = await fetch(CSV_URL);
-                            
-                            // 🚨 [수정 전] const arrayBuffer = await res.arrayBuffer();
-                            // 🚨 [수정 전] const workbook = XLSX.read(arrayBuffer, { type: 'array' });
 
                             // ✨ [수정 후] 브라우저가 텍스트를 UTF-8로 완벽히 해독한 뒤 넘겨주도록 변경
                             const csvText = await res.text();
