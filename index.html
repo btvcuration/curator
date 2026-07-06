@@ -539,6 +539,7 @@
             const [livePickDayFilter, setLivePickDayFilter] = useState(getYesterdayDay()); // 디폴트 어제
             const [livePickTypeFilter, setLivePickTypeFilter] = useState('전체'); 
             const [livePickStatusFilter, setLivePickStatusFilter] = useState('방영중');
+            const [livePickSlotFilter, setLivePickSlotFilter] = useState('전체');
             const [includeRecentEnded, setIncludeRecentEnded] = useState(false); // 최근 종영작 포함 여부
             const [selectedLivePick, setSelectedLivePick] = useState(null); 
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
@@ -1705,6 +1706,17 @@
                                                     </button>
                                                 ))}
                                             </div>
+                                            {/* 💡 방영 슬롯 필터 (드라마 전용) */}
+                                            <div className="flex bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
+                                                {['전체', ...Array.from(new Set(livePickData.map(d => d.slot).filter(s => s && s !== "-")))].map(s => (
+                                                    <button 
+                                                        key={s} onClick={() => setLivePickSlotFilter(s)}
+                                                        className={`px-3 py-1.5 text-xs font-bold rounded-lg whitespace-nowrap transition-all ${livePickSlotFilter === s ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'}`}
+                                                    >
+                                                        {s}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     )}
 
@@ -1733,7 +1745,10 @@
 
                                                 // 2. 메타유형 필터
                                                 if (livePickTypeFilter !== '전체' && item.metaType !== livePickTypeFilter) return false;
-
+                                            
+                                                // 💡 2.5 방영 슬롯 필터 추가
+                                                if (livePickSlotFilter !== '전체' && item.slot !== livePickSlotFilter) return false;
+                                            
                                                 // 3. 상태(라이프사이클) 필터 적용
                                                 if (livePickStatusFilter !== '전체') {
                                                     const isKeeping = item.lifecycle === "유지";
