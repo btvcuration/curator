@@ -539,6 +539,7 @@
             const [livePickDayFilter, setLivePickDayFilter] = useState(getYesterdayDay()); // 디폴트 어제
             const [livePickTypeFilter, setLivePickTypeFilter] = useState('전체'); 
             const [livePickStatusFilter, setLivePickStatusFilter] = useState('방영중');
+            const [includeRecentEnded, setIncludeRecentEnded] = useState(false); // 최근 종영작 포함 여부
             const [selectedLivePick, setSelectedLivePick] = useState(null); 
             const [selectedHistoryIdx, setSelectedHistoryIdx] = useState(0);
 
@@ -556,6 +557,30 @@
                     return ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
                 }
                 return "";
+            };
+            
+            const calculateDaysDiff = (dateStr) => {
+                if (!dateStr) return 999;
+                const cleanDate = String(dateStr).replace(/'/g, '').trim().replace(/\.$/, "");
+                const parts = cleanDate.split('.');
+                let targetDateObj;
+                
+                const today = new Date();
+                const currentYear = today.getFullYear();
+            
+                if (parts.length === 3) {
+                    let year = parseInt(parts[0], 10);
+                    if (year < 100) year += 2000;
+                    targetDateObj = new Date(year, parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+                } else if (parts.length === 2) {
+                    targetDateObj = new Date(currentYear, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+                } else {
+                    return 999;
+                }
+            
+                const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const diffTime = todayMidnight.getTime() - targetDateObj.getTime();
+                return Math.floor(diffTime / (1000 * 60 * 60 * 24));
             };
 
             // API 호출 함수
@@ -1658,6 +1683,16 @@
                                                     </button>
                                                 ))}
                                             </div>
+                                            {/* 💡 최근 종영작 포함 토글 (방영중 선택 시에만 노출) */}
+                                            {livePickStatusFilter === '방영중' && (
+                                                <button 
+                                                    onClick={() => setIncludeRecentEnded(!includeRecentEnded)}
+                                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition-all ${includeRecentEnded ? 'bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm'}`}
+                                                >
+                                                    {includeRecentEnded ? <CheckSquare size={14} className="text-indigo-600"/> : <Square size={14}/>}
+                                                    최근 7일 종영작 포함
+                                                </button>
+                                            )}
 
                                             {/* 요일 필터 */}
                                             <div className="flex items-center gap-1 bg-white border border-gray-200 p-1 rounded-xl shadow-sm">
@@ -1704,11 +1739,26 @@
                                                     const isKeeping = item.lifecycle === "유지";
                                                     const isNew = item.lifecycle === "신규" || item.lifecycle === "신작";
                                                     const isUpcoming = item.lifecycle === "방영예정";
+                                                    const isEnded = item.lifecycle === "종영";
                                                 
-                                                    if (livePickStatusFilter === '방영중' && !(isKeeping || isNew)) return false;
-                                                    if (livePickStatusFilter === '신규' && !isNew) return false;
-                                                    if (livePickStatusFilter === '방영예정' && !isUpcoming) return false;
-                                                    if (livePickStatusFilter === '종영' && item.lifecycle !== "종영") return false;
+                                                    if (livePickStatusFilter === '방영중') {
+                                                        let pass = isKeeping || isNew;
+                                                        
+                                                        // 💡 최근 7일 종영작 포함 옵션이 켜져있을 때
+                                                        if (!pass && includeRecentEnded && isEnded) {
+                                                            const latestData = history[history.length - 1]; // 가장 최신 데이터
+                                                            if (latestData && latestData.date) {
+                                                                const daysDiff = calculateDaysDiff(latestData.date);
+                                                                if (daysDiff <= 7) pass = true; // 7일 이내면 패스
+                                                            }
+                                                        }
+                                                        if (!pass) return false; // 최종적으로 패스 못했으면 숨김
+                                                    } else {
+                                                        // 방영중 이외의 탭을 선택했을 때의 로직
+                                                        if (livePickStatusFilter === '신규' && !isNew) return false;
+                                                        if (livePickStatusFilter === '방영예정' && !isUpcoming) return false;
+                                                        if (livePickStatusFilter === '종영' && !isEnded) return false;
+                                                    }
                                                 }
 
                                                 return true; 
