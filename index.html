@@ -1107,12 +1107,14 @@
                                 if (price === 0) return false;
                                 if (price < minPrice) return false;
                             }
-                            if (selectedSubscription !== 'all') {
-                                if (!prod.includes(selectedSubscription)) return false;
+                            if (selectedSubscriptions.length > 0) {
+                                const itemMappedSubs = getMappedSubscriptions(prod);
+                                const hasMatch = selectedSubscriptions.some(sub => itemMappedSubs.includes(sub));
+                                if (!hasMatch) return false;
                             }
                             if (onlyMobile) {
                                 if (nScreen !== "YES") return false; 
-                            }
+                            }        
                             return true;
                         });
                         setResults(filtered);
