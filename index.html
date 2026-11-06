@@ -1096,8 +1096,10 @@
                 setSelectedPreset("");
             };
 
-            const handleSearch = async (inputQuery) => {
+            // 🦸 [수정] heroTitles: 트렌드 픽/라이브 픽에서 넘어오는 '기준 작품' (GAS가 Live_Programs_DB로 B tv ID 확정)
+            const handleSearch = async (inputQuery, heroTitles = []) => {
                 const targetQuery = inputQuery || query;
+                const heroList = Array.isArray(heroTitles) ? heroTitles.filter(t => String(t || '').trim()).slice(0, 3) : [];
                 if (!targetQuery) return;
 
                 setQuery(targetQuery);
@@ -1117,7 +1119,8 @@
                     let aiResponse = { recommendedTitles: [], strategy: "", blockTitle: "" };
 
                     try {
-                        const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}&mode=planning`);
+                        const heroParam = heroList.length > 0 ? `&hero=${encodeURIComponent(JSON.stringify(heroList))}` : '';
+                        const response = await fetch(`${GAS_API_URL}?query=${encodeURIComponent(augmentedQuery)}&weather=${encodeURIComponent(context.weather)}&mode=planning${heroParam}`);
                         if (response.ok) {
                             const json = await response.json();
                             aiResponse = json;
@@ -1141,7 +1144,9 @@
                         reason: r.reason || "AI 추천",
                         targetType: r.type ? r.type.toLowerCase() : (targetQuery.includes("정주행") || targetQuery.includes("드라마") ? "drama" : ""), 
                         keywords: r.keywords || [],
-                        region: r.region || "국내" // ✅ 이 줄을 추가해 주세요!
+                        region: r.region || "국내", // ✅ 이 줄을 추가해 주세요!
+                        isHero: !!r.isHero,     // 🦸 [추가] GAS가 표시한 기준 작품
+                        btvId: r.btvId || ""    // 🦸 [추가] Live_Programs_DB에서 확정된 B tv 시리즈ID
                     }));
                     
                     // 💡 [개편된 매칭 엔진] AI 추천작을 기준으로 1:1 매칭 (지역 필터 & 중복 방지)
@@ -1156,7 +1161,13 @@
                         let bestMatch = null;
                         let highestScore = 0;
 
-                        dbData.forEach(item => {
+                        // 🦸 [추가] B tv ID가 확정된 히어로는 제목 매칭 없이 ID로 바로 연결
+                        if (rec.btvId && !usedDbIds.has(rec.btvId)) {
+                            const direct = dbData.find(it => it.id === rec.btvId);
+                            if (direct) { bestMatch = direct; highestScore = 999; }
+                        }
+
+                        if (!bestMatch) dbData.forEach(item => {
                             if (usedDbIds.has(item.id)) return;
 
                             const rawTitle = item.title || "";
@@ -1191,7 +1202,16 @@
                                 const minLen = Math.min(myTitle.length, recTitle.length);
                                 const maxLen = Math.max(myTitle.length, recTitle.length);
                                 
-                                if (minLen <= 2 && myTitle !== recTitle) {
+                                // 🦸 [추가] '닥터X : 하얀 마피아의 시대'처럼 [원제목 + 구분기호 + 부제] 형태는 짧은 제목이어도 인정
+                                const isSubtitleForm = myTitle.startsWith(recTitle) && /^[:：\-–~]/.test(myTitle.slice(recTitle.length));
+
+                                if (minLen <= 1) {
+                                    score = 0;
+                                } else if (isSubtitleForm) {
+                                    score = 85;
+                                } else if (rec.isHero && myTitle.startsWith(recTitle)) {
+                                    score = 80; // 히어로는 앞부분 일치만으로도 인정
+                                } else if (minLen <= 2 && myTitle !== recTitle) {
                                     score = 0; 
                                 } else if (maxLen >= 5 && minLen <= 3) {
                                     score = 0; 
@@ -1199,6 +1219,8 @@
                                     score = 70 + ((minLen / maxLen) * 20);
                                 }
                             }
+
+                            const baseTitleScore = score; // 🦸 [추가] 제목만으로 받은 점수 (히어로 보호용)
                             
                             // 2. 기본 점수를 받은 후보들에 한해 가산점/페널티 적용
                             if (score > 0) {
@@ -1252,6 +1274,9 @@
                                 }
                                 
                                 if (/\[UHD\]|\(파일럿\)|\[가치봄\]|\[수어영화\]/i.test(rawTitle)) score -= 2;
+
+                                // 🦸 [추가] 히어로는 장르·지역 감점으로 탈락하지 않도록 제목 점수를 하한으로 보장
+                                if (rec.isHero) score = Math.max(score, baseTitleScore - 1);
 
                                 if (score > highestScore && score >= 60) {
                                     highestScore = score;
@@ -2158,7 +2183,7 @@
                                                 return (
                                                     <button 
                                                         key={i} 
-                                                        onClick={() => handleSearch(targetQuery)} 
+                                                        onClick={() => handleSearch(targetQuery, (item && Array.isArray(item.heroTitles)) ? item.heroTitles : [])} 
                                                         className={`flex flex-row md:flex-col items-center md:items-start h-full p-4 md:p-5 rounded-2xl border shadow-sm transition-all group text-left relative overflow-hidden ${style.bg} ${style.border} ${style.hover} hover:-translate-y-1 hover:shadow-md w-full`}
                                                     >
                                                         <div className="flex-shrink-0 mr-4 md:mr-0 md:mb-4 relative z-10">
@@ -2958,7 +2983,7 @@
                                                 const targetTitle = selectedLivePick.originalTitle || selectedLivePick.title;
                                                 const searchTxt = `${targetTitle} ${selectedLivePick.channel} ${insightTxt}`.trim();
                                                 
-                                                handleSearch(searchTxt);
+                                                handleSearch(searchTxt, [targetTitle]); // 🦸 [수정] 보고 있던 작품을 기준 작품으로
                                                 setSelectedLivePick(null);
                                             }}
                                             className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold text-lg hover:bg-gray-800 transition-colors shadow-lg flex items-center justify-center gap-2"
