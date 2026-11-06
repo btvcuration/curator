@@ -2118,30 +2118,31 @@
                                     </div>
 
                                     {/* 오른쪽: 자동화 타겟 프리셋 영역 */}
-                                    <div className="lg:w-[400px] shrink-0 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center gap-3">
+                                    <div className="lg:w-[400px] shrink-0 min-w-0 bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center gap-3">
                                         <h4 className="font-bold text-gray-800 flex items-center gap-2 text-sm">
                                             <Server size={16} className="text-blue-600"/> 연동 자동화 타겟 프리셋
                                         </h4>
-                                        <div className="flex items-center gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
                                             <select 
                                                 value={selectedPreset || ""} 
                                                 onChange={(e) => setSelectedPreset(e.target.value)}
-                                                className="flex-1 bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 font-medium text-gray-700"
+                                                title={selectedPreset || ""}
+                                                className="flex-1 min-w-0 w-full truncate bg-gray-50 border border-gray-200 text-sm rounded-xl px-3 py-2.5 focus:outline-none focus:border-blue-500 font-medium text-gray-700"
                                             >
                                                 <option value="">프리셋 직접 선택...</option>
                                                 {presetMappings && presetMappings.map(p => (
                                                     <option key={p.label} value={p.label}>{p.label}</option>
                                                 ))}
                                             </select>
-                                            <button onClick={() => openPresetModal(false)} className="px-3 py-2.5 text-xs font-bold bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 whitespace-nowrap">
+                                            <button onClick={() => openPresetModal(false)} className="shrink-0 px-3 py-2.5 text-xs font-bold bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 whitespace-nowrap">
                                                 + 신규
                                             </button>
                                             {selectedPreset && (
                                                 <>
-                                                    <button onClick={() => openPresetModal(true)} className="px-2.5 py-2.5 text-xs font-bold bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200">
+                                                    <button onClick={() => openPresetModal(true)} className="shrink-0 px-2.5 py-2.5 text-xs font-bold bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200">
                                                         <Edit3 size={14} />
                                                     </button>
-                                                    <button onClick={handleDeletePreset} className="px-2.5 py-2.5 text-xs font-bold bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100">
+                                                    <button onClick={handleDeletePreset} className="shrink-0 px-2.5 py-2.5 text-xs font-bold bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100">
                                                         <Trash2 size={14} />
                                                     </button>
                                                 </>
