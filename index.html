@@ -80,6 +80,7 @@
         const Copy = (p) => <Icon name="Copy" {...p} />;
         const RotateCcw = (p) => <Icon name="RotateCcw" {...p} />;
         const Filter = (p) => <Icon name="Filter" {...p} />;
+        const ArrowUpDown = (p) => <Icon name="ArrowUpDown" {...p} />;
         const X = (p) => <Icon name="X" {...p} />;
         const Download = (p) => <Icon name="Download" {...p} />;
         const Edit3 = (p) => <Icon name="Edit3" {...p} />;
@@ -210,6 +211,40 @@
                 return 0.8 + (ratio * 0.2); 
             }
             return 0.0; 
+        };
+
+        // 🗓️ [추가] '서비스시작일시' → 정렬용 숫자 키(yyyyMMddHHmmss). 해석 불가 시 0
+        //   - "2024-05-01 10:00:00", "2024.05.01", "20240501", 엑셀 날짜 일련번호(숫자) 모두 처리
+        const parseServiceStartKey = (v) => {
+            if (v === null || v === undefined || v === '') return 0;
+            if (typeof v === 'number' && v > 20000 && v < 80000) {
+                const d = new Date(Math.round((v - 25569) * 86400000));
+                const p = (n) => String(n).padStart(2, '0');
+                return Number(`${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`);
+            }
+            const str = String(v).trim();
+            // GAS가 날짜 셀을 String(Date)로 내보낸 경우: "Wed May 01 2024 10:30:00 GMT+0900 (...)"
+            if (/^[A-Za-z]{3} [A-Za-z]{3} \d{1,2} \d{4}/.test(str)) {
+                const d = new Date(str.replace(/\s*\(.*\)\s*$/, ''));
+                if (isNaN(d.getTime())) return 0;
+                const p = (n) => String(n).padStart(2, '0');
+                return Number(`${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`);
+            }
+            const digits = String(v).replace(/\D/g, '');
+            if (/^\d{8,14}$/.test(digits) && !/[^\d\s:.\-\/T]/.test(String(v).trim())) {
+                return Number(digits.padEnd(14, '0').slice(0, 14));
+            }
+            const m = String(v).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})(?:\D+(\d{1,2})\D+(\d{1,2})(?:\D+(\d{1,2}))?)?/);
+            if (!m) return 0;
+            const p = (n) => String(n || 0).padStart(2, '0');
+            let hh = Number(m[4] || 0);
+            if (/오후|PM/i.test(str) && hh < 12) hh += 12;   // "오후 3:00" → 15시
+            if (/오전|AM/i.test(str) && hh === 12) hh = 0;
+            return Number(`${m[1]}${p(m[2])}${p(m[3])}${p(hh)}${p(m[5])}${p(m[6])}`);
+        };
+        const formatServiceStart = (key) => {
+            const s = String(key || '');
+            return s.length >= 8 ? `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}` : '';
         };
 
         // 🌤️ [수정] 날씨: 브라우저에서 Open-Meteo 직접 조회 (API 키 불필요, 30분 캐시)
@@ -466,6 +501,31 @@
             
             // [수정] 원본 검색 결과를 저장하는 유일한 State
             const [originalSearchResults, setOriginalResults] = useState([]); 
+
+            // ↕️ [추가] 결과 정렬
+            const SORT_OPTIONS = [
+                { v: 'default', label: '기본순' },
+                { v: 'newest', label: '최신순 (서비스시작일)' },
+                { v: 'oldest', label: '오래된순 (서비스시작일)' },
+                { v: 'title', label: '제목순' },
+            ];
+            const [sortMode, setSortMode] = useState('default');
+
+            const sortItems = (list, mode = sortMode) => {
+                if (!Array.isArray(list)) return list;
+                if (mode === 'newest' || mode === 'oldest') {
+                    const dir = mode === 'newest' ? -1 : 1;
+                    return [...list].sort((a, b) => {
+                        const ka = Number(a.serviceStart) || 0, kb = Number(b.serviceStart) || 0;
+                        if (!ka !== !kb) return ka ? -1 : 1; // 날짜 없는 항목은 항상 맨 뒤
+                        return (ka - kb) * dir;
+                    });
+                }
+                if (mode === 'title') {
+                    return [...list].sort((a, b) => String(a.title || '').localeCompare(String(b.title || ''), 'ko'));
+                }
+                return list; // default / custom: 현재 순서 유지
+            };
 
             const [strategy, setStrategy] = useState("");
             const [blockTitle, setBlockTitle] = useState("");
@@ -748,7 +808,8 @@
                         const cached = await loadFromIndexedDB();
                         let loadedData = null;
 
-                        if (cached && (new Date().getTime() - cached.timestamp < CACHE_EXPIRY_MS)) {
+                        const cacheHasServiceStart = !!(cached && Array.isArray(cached.data) && cached.data.length > 0 && 'serviceStart' in cached.data[0]);
+                        if (cached && cacheHasServiceStart && (new Date().getTime() - cached.timestamp < CACHE_EXPIRY_MS)) {
                             loadedData = cached.data;
                             console.log("✅ 로컬 영화 DB 사용");
                         }
@@ -782,6 +843,8 @@
                                 const idIdx = 3; // CS ID가 들어있는 D열 (0부터 시작하므로 3)
                                 const priceIdx = headers.findIndex(h => String(h).includes('가격') || String(h).includes('PPV'));
                                 const nScreenIdx = headers.findIndex(h => String(h).includes('N스크린여부'));
+                                const serviceStartIdx = headers.findIndex(h => String(h).includes('서비스시작일시'));
+                                if (serviceStartIdx === -1) console.warn("⚠️ CSV에 '서비스시작일시' 컬럼이 없습니다. 최신순 정렬이 동작하지 않습니다.");
 
                                 // 데이터 배열을 JSON 객체 배열로 변환
                                 loadedData = rawData.slice(1).map(row => {
@@ -797,6 +860,7 @@
                                         products: String(row[productIdx] || ''),
                                         price: isNaN(priceVal) ? 0 : priceVal,
                                         nScreen: nScreenIdx !== -1 ? String(row[nScreenIdx]) : 'NO',
+                                        serviceStart: serviceStartIdx !== -1 ? parseServiceStartKey(row[serviceStartIdx]) : 0,
                                     };
                                 });
                                 
@@ -1140,9 +1204,9 @@
                             }        
                             return true;
                         });
-                        setResults(filtered);
+                        setResults(sortItems(filtered));
                     } else {
-                        setResults(finalCandidates);
+                        setResults(sortItems(finalCandidates));
                     }
 
                     setViewState("result");
@@ -1235,7 +1299,7 @@
                         return true;
                     });
             
-                    setResults(filtered);
+                    setResults(sortItems(filtered));
                     
                     if (filtered.length === 0) {
                         showToast("조건에 맞는 콘텐츠가 없습니다.");
@@ -1339,6 +1403,20 @@
                 showToast(`✅ ${manualItems.length}건의 ID가 목록에 추가되었습니다.`);
             };
 
+            // ↕️ [추가] 정렬 방식 변경
+            const handleSortChange = (mode) => {
+                setSortMode(mode);
+                if (mode === 'default') {
+                    // 기본순: 검색 결과면 AI 추천 순서, 아니면 원본 DB 순서로 복원 (수동 추가 항목은 맨 앞 유지)
+                    const base = (query.trim() !== "" && originalSearchResults.length > 0) ? originalSearchResults : dbData;
+                    const order = new Map(base.map((it, i) => [it.id, i]));
+                    const rank = (it) => order.has(it.id) ? order.get(it.id) : -1;
+                    setResults(prev => [...prev].sort((a, b) => rank(a) - rank(b)));
+                } else {
+                    setResults(prev => sortItems(prev, mode));
+                }
+            };
+
             const onDragStart = (e, index) => {
                 dragItem.current = index;
             };
@@ -1355,6 +1433,7 @@
                 dragItem.current = null;
                 dragOverItem.current = null;
                 setResults(_results);
+                setSortMode('custom'); // 직접 순서를 바꿨으므로 '직접 정렬'로 표시
             };
 
             const onDragOver = (e) => {
@@ -2088,7 +2167,21 @@
                                             선택 삭제
                                         </button>
                                     </div>
-                                    <span className="text-[11px] text-gray-400 font-medium hidden sm:inline-block">드래그하여 순서 변경 가능</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[11px] text-gray-400 font-medium hidden sm:inline-block">드래그하여 순서 변경 가능</span>
+                                        {/* ↕️ [추가] 정렬 선택 */}
+                                        <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-lg pl-2.5 pr-1 hover:border-gray-300 transition-colors">
+                                            <ArrowUpDown size={14} className="text-gray-400" />
+                                            <select
+                                                value={sortMode}
+                                                onChange={(e) => handleSortChange(e.target.value)}
+                                                className="text-xs font-bold text-gray-600 bg-transparent outline-none cursor-pointer py-2 pr-1"
+                                            >
+                                                {SORT_OPTIONS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+                                                {sortMode === 'custom' && <option value="custom" disabled>직접 정렬</option>}
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* 검색 결과 리스트 (카드형) */}
@@ -2148,6 +2241,10 @@
                                                                         {String(item.subCategory || '').includes('영화') ? '🎬 ' : String(item.subCategory || '').includes('드라마') ? '📺 ' : ''}{item.subCategory || '분류없음'}
                                                                     </span>
                                                                     <span className="text-[10px] bg-gray-50 text-gray-400 border border-gray-100 px-1.5 py-0.5 rounded">{item.category || '기타'}</span>
+                                                                    {/* 🗓️ [추가] 서비스시작일 */}
+                                                                    {Number(item.serviceStart) > 0 && (
+                                                                        <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded font-bold">🗓️ {formatServiceStart(item.serviceStart)}</span>
+                                                                    )}
                                                                 
                                                                     {/* 💡 렌더링 시에도 동일하게 'ⁿN스크린여부'와 .trim() 반영 */}
                                                                     {(() => {
