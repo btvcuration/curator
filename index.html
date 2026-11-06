@@ -348,17 +348,33 @@
             const matches = useMemo(() => {
                 const q = norm(term);
                 if (!q) return [];
-                const out = [];
+                // 같은 시리즈ID(CS...)는 에피소드별 가격 행이 여러 개여도 1건으로 묶음
+                const byId = new Map();
                 for (let i = 0; i < index.length; i++) {
                     const e = index[i];
                     let rank = -1;
                     if (e.t === q || e.id === q) rank = 0;
                     else if (e.t.startsWith(q) || e.id.startsWith(q)) rank = 1;
                     else if (e.t.includes(q)) rank = 2;
-                    if (rank >= 0) out.push({ it: e.it, rank });
+                    if (rank < 0) continue;
+                    const key = e.it.id;
+                    const g = byId.get(key);
+                    const price = Number(e.it.price) || 0;
+                    if (!g) {
+                        byId.set(key, { it: e.it, rank, prices: new Set([price]), rows: 1 });
+                    } else {
+                        g.prices.add(price);
+                        g.rows++;
+                        if (rank < g.rank) { g.rank = rank; g.it = e.it; }
+                        if ((Number(e.it.serviceStart) || 0) > (Number(g.it.serviceStart) || 0) && rank === g.rank) g.it = e.it;
+                    }
                 }
+                const out = Array.from(byId.values());
                 out.sort((a, b) => a.rank - b.rank || (Number(b.it.serviceStart) || 0) - (Number(a.it.serviceStart) || 0));
-                return out.slice(0, 30).map(o => o.it);
+                return out.slice(0, 30).map(g => {
+                    const prices = Array.from(g.prices).sort((x, y) => x - y);
+                    return { ...g.it, prices, minPrice: prices[0], price: prices[0], rowCount: g.rows };
+                });
             }, [term, index]);
 
             const isPending = text.trim() !== term.trim();
@@ -413,6 +429,9 @@
                                         {it.metaType && <span className="shrink-0 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded font-bold">{it.metaType}</span>}
                                         {it.subCategory && <span className="shrink-0 text-[10px] bg-gray-50 text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded">{it.subCategory}</span>}
                                         {Number(it.serviceStart) > 0 && <span className="shrink-0 text-[10px] text-amber-700">🗓️ {formatServiceStart(it.serviceStart)}</span>}
+                                        <span className="shrink-0 text-[10px] text-gray-500">
+                                            {it.minPrice > 0 ? `₩${it.minPrice.toLocaleString()}${it.prices.length > 1 ? '~' : ''}` : (it.prices.length > 1 ? '무료~' : '무료')}
+                                        </span>
                                         <span className="shrink-0 text-[10px] text-gray-400 font-mono">{it.id}</span>
                                         <span className={`shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md ${added ? 'text-gray-400' : 'text-blue-600 bg-blue-50'}`}>{added ? '추가됨' : '+ 추가'}</span>
                                     </button>
@@ -1476,10 +1495,11 @@
                     return;
                 }
                 const { start, end } = getDefaultDates();
+                const { rowCount, ...rest } = dbItem;
                 const newItem = {
-                    ...dbItem,
-                    prices: [dbItem.price],
-                    minPrice: dbItem.price,
+                    ...rest,
+                    prices: Array.isArray(dbItem.prices) && dbItem.prices.length ? dbItem.prices : [dbItem.price],
+                    minPrice: dbItem.minPrice !== undefined ? dbItem.minPrice : dbItem.price,
                     startDate: start,
                     endDate: end,
                     isManualAdd: true,
