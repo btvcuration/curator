@@ -65,6 +65,101 @@ async function runBuildOnUrl(tabId, url, typeName) {
     });
 }
 
+// 🖼️ [추가] AI Curator 카드용 NCMS 포스터 조회
+//  - 열려 있는 NCMS 탭(로그인 세션) 안에서 시리즈 상세를 조회해 포스터 주소만 돌려줌. 세션·토큰은 밖으로 내보내지 않음
+//  - NCMS 탭이 없으면 no_ncms, 로그인 화면이면 no_login
+const NCMS_ORIGIN = "https://ncms.skbroadband.com:8443";
+
+async function findNcmsTab() {
+    const tabs = await chrome.tabs.query({ url: NCMS_ORIGIN + "/*" });
+    return tabs.find(t => /\/contents\//.test(t.url || "")) || tabs[0] || null;
+}
+
+// NCMS 페이지 안(MAIN world)에서 실행: NCMS Hub 통합검색과 같은 방식으로 포스터 주소 조립
+async function ncmsPosterLookup(ids) {
+    const csrf = document.querySelector("input[name='_csrf']")?.value;
+    if (!csrf || typeof $ === "undefined" || !$.post) return { status: "no_login" };
+
+    const catPath = (m) => {
+        m = m || "";
+        if (m.includes("영화")) return "movie";
+        if (m.includes("드라마")) return "drama";
+        if (m.includes("예능") || m.includes("음악")) return "enter";
+        if (m.includes("애니")) return "animation";
+        if (m.includes("키즈")) return "kids";
+        if (m.includes("다큐")) return "docu";
+        if (m.includes("교육")) return "edu";
+        if (m.includes("시사") || m.includes("교양")) return "current";
+        if (m.includes("스포츠")) return "sport";
+        if (m.includes("성인") || m.includes("에로")) return "adult";
+        return "movie";
+    };
+    const findFile = (obj, key) => {
+        let found = null;
+        const walk = (o) => {
+            if (found || !o) return;
+            for (const k in o) {
+                const v = o[k];
+                if (typeof v === "string" && v.includes(key) && v.includes(".jpg")) { found = v; return; }
+                if (v && typeof v === "object") walk(v);
+            }
+        };
+        walk(obj); return found;
+    };
+    let objs = 0, htmls = 0;
+    const post = (url, data) => new Promise(res => {
+        $.post(url, { ...data, _csrf: csrf }).done(d => {
+            if (d && typeof d === "object") objs++; else htmls++;
+            res(d && typeof d === "object" ? d : null);
+        }).fail(() => res(null));
+    });
+
+    const one = async (id) => {
+        for (const api of ["/contents/title/titleSelect.json", "/contents/season/seasonSelect.json"]) {
+            const d = await post(api, { srisId: id });
+            if (!d) continue;
+            const info = d.result?.titleInfo || d.titleInfo || d.result?.seasonInfo || d.seasonInfo || {};
+            const metaId = info.metaId || d.result?.metaId || d.metaId || "";
+            const file = findFile(d, "TVPH");
+            if (!metaId || !file) continue;
+            let metaNm = info.metaTypNm || "";
+            if (!metaNm) {
+                const ep = await post("/contents/episode/episodeList.json", { srisId: id, rows: 1, page: 1 });
+                const l = ep?.result?.contents || ep?.contents || [];
+                metaNm = l[0]?.metaTypNm || l[0]?.meta_typ_nm || "";
+            }
+            return `https://stimage.hanafostv.com:8443/thumbnails/iip/115_156//${catPath(metaNm)}/${metaId.slice(-2)}/${metaId}/${file}`;
+        }
+        return "";
+    };
+
+    const posters = {};
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(4, ids.length) }, async () => {
+        while (next < ids.length) { const id = ids[next++]; posters[id] = await one(id); }
+    }));
+    // 응답이 전부 HTML(로그인 화면 등)이면 세션 만료로 봄
+    if (!objs && htmls) return { status: "no_login" };
+    return { status: "ok", posters };
+}
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.type !== "NCMS_POSTERS") return;
+    const ids = (Array.isArray(request.ids) ? request.ids : []).map(String).filter(id => /^CS\w+$/.test(id)).slice(0, 60);
+    (async () => {
+        try {
+            const tab = await findNcmsTab();
+            if (!tab) return sendResponse({ status: "no_ncms" });
+            const r = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: ncmsPosterLookup, args: [ids] });
+            sendResponse(r?.[0]?.result || { status: "no_login" });
+        } catch (e) {
+            console.warn("[AI Curator] 포스터 조회 실패:", e);
+            sendResponse({ status: "no_ncms" });
+        }
+    })();
+    return true; // 비동기 응답
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // 1. EUXP 탭 열고 주입
     if (request.type === "OPEN_EUXP_AND_UPLOAD") {
