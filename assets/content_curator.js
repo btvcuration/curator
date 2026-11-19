@@ -28,7 +28,7 @@ window.addEventListener("message", (event) => {
 
     const CACHE_KEY = "ncmsPosterCache.v1";
     const TTL_HIT = 7 * 24 * 3600 * 1000, TTL_MISS = 24 * 3600 * 1000;
-    const W = 46, H = 66;
+    const W = 80, H = 115; // 포스터 원본(115x156)보다 작게 유지해 흐려지지 않게
     let cache = {};
     try { cache = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}") || {}; } catch (e) { cache = {}; }
     const now = () => Date.now();
@@ -52,7 +52,7 @@ window.addEventListener("message", (event) => {
     const makeBox = (id) => {
         const box = document.createElement("div");
         box.dataset.ncmsPoster = id;
-        box.style.cssText = `width:${W}px;height:${H}px;flex:none;border-radius:6px;overflow:hidden;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#94a3b8;text-align:center;line-height:1.2;margin-top:2px;cursor:default;`;
+        box.style.cssText = `width:${W}px;height:${H}px;flex:none;border-radius:6px;overflow:hidden;background:#f1f5f9;border:1px solid #e2e8f0;display:flex;align-items:center;justify-content:center;font-size:10px;color:#94a3b8;text-align:center;line-height:1.2;margin-top:2px;cursor:default;`;
         // 카드의 꾹 눌러 선택·드래그와 겹치지 않게
         box.addEventListener("mousedown", (e) => e.stopPropagation());
         box.addEventListener("click", (e) => {
