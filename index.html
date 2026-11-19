@@ -247,6 +247,34 @@
             return s.length >= 8 ? `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}` : '';
         };
 
+        // 🖼️ [추가] 포스터: 편성타이틀 시트의 '이미지경로' + '이미지시스템파일명'
+        //  - DB에는 경로+파일명(img)만 저장하고, 주소는 화면에 그릴 때 크기를 붙여 조립 (CSV·캐시 용량 절약)
+        //  - 썸네일 서버가 요청 크기로 줄여 줌: 목록 160_230 (80x115 표시의 2배), 팝업 240_342
+        const POSTER_BASE = "https://stimage.hanafostv.com:8443/thumbnails/iip/";
+        const joinPosterPath = (path, file) => {
+            const p = String(path || '').trim(), f = String(file || '').trim();
+            if (!p || !f) return '';
+            return (p.startsWith('/') ? p : '/' + p) + (p.endsWith('/') ? '' : '/') + f;
+        };
+        const posterUrl = (img, size = '160_230') => img ? `${POSTER_BASE}${size}${img}` : '';
+
+        const PosterThumb = ({ img, w = 80, h = 115, size = '160_230', className = '' }) => {
+            const [failed, setFailed] = useState(false);
+            useEffect(() => setFailed(false), [img]);
+            const src = posterUrl(img, size);
+            return (
+                <div
+                    className={`shrink-0 rounded-lg overflow-hidden bg-gray-100 border border-gray-200 flex items-center justify-center text-[10px] text-gray-400 text-center leading-tight ${className}`}
+                    style={{ width: w, height: h }}
+                >
+                    {src && !failed
+                        ? <img src={src} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer"
+                               onError={() => setFailed(true)} className="w-full h-full object-cover pointer-events-none" />
+                        : <span className="whitespace-pre-line">{src ? '이미지\n오류' : '포스터\n없음'}</span>}
+                </div>
+            );
+        };
+
         // 🌤️ [수정] 날씨: 브라우저에서 Open-Meteo 직접 조회 (API 키 불필요, 30분 캐시)
         const wmoToKo = (c) => {
             if (c === 0) return "맑음";
@@ -425,6 +453,7 @@
                                         onClick={() => onAdd(it)}
                                         className={`w-full flex items-center gap-2 px-4 py-2.5 text-left border-b border-gray-50 last:border-0 transition-colors ${added ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-50'}`}
                                     >
+                                        <PosterThumb img={it.img} w={24} h={34} size="80_115" className="rounded" />
                                         <span className="flex-1 min-w-0 truncate text-sm font-bold text-gray-800">{it.title}</span>
                                         {it.metaType && <span className="shrink-0 text-[10px] bg-green-50 text-green-600 border border-green-200 px-1.5 py-0.5 rounded font-bold">{it.metaType}</span>}
                                         {it.subCategory && <span className="shrink-0 text-[10px] bg-gray-50 text-gray-500 border border-gray-200 px-1.5 py-0.5 rounded">{it.subCategory}</span>}
@@ -841,6 +870,13 @@
 
             // ➕ [추가] 추천 리스트에 이미 들어있는 ID (검색창의 '추가됨' 표시용)
             const resultIdSet = useMemo(() => new Set(results.map(r => r.id)), [results]);
+
+            // 🖼️ [추가] 시리즈ID → 포스터 (라이브 픽처럼 DB 행이 아닌 카드에서 사용)
+            const posterById = useMemo(() => {
+                const m = new Map();
+                (Array.isArray(dbData) ? dbData : []).forEach(it => { if (it.img && !m.has(it.id)) m.set(it.id, it.img); });
+                return m;
+            }, [dbData]);
             const [targetLibraryId, setTargetLibraryId] = useState(""); // 대상 라이브러리 ID (향후 익스텐션 연동용)
             
 
@@ -928,7 +964,8 @@
                         const cached = await loadFromIndexedDB();
                         let loadedData = null;
 
-                        const cacheHasServiceStart = !!(cached && Array.isArray(cached.data) && cached.data.length > 0 && 'serviceStart' in cached.data[0]);
+                        // 🖼️ [수정] 포스터(img) 칸이 없는 예전 캐시는 새로 받음
+                        const cacheHasServiceStart = !!(cached && Array.isArray(cached.data) && cached.data.length > 0 && 'serviceStart' in cached.data[0] && 'img' in cached.data[0]);
                         if (cached && cacheHasServiceStart && (new Date().getTime() - cached.timestamp < CACHE_EXPIRY_MS)) {
                             loadedData = cached.data;
                             console.log("✅ 로컬 영화 DB 사용");
@@ -965,6 +1002,10 @@
                                 const nScreenIdx = headers.findIndex(h => String(h).includes('N스크린여부'));
                                 const serviceStartIdx = headers.findIndex(h => String(h).includes('서비스시작일시'));
                                 if (serviceStartIdx === -1) console.warn("⚠️ CSV에 '서비스시작일시' 컬럼이 없습니다. 최신순 정렬이 동작하지 않습니다.");
+                                // 🖼️ [추가] 포스터 칸 (R열 이미지경로, S열 이미지시스템파일명)
+                                const imgPathIdx = headers.findIndex(h => String(h).includes('이미지경로'));
+                                const imgFileIdx = headers.findIndex(h => String(h).includes('이미지시스템파일명'));
+                                if (imgPathIdx === -1 || imgFileIdx === -1) console.warn("⚠️ CSV에 '이미지경로'/'이미지시스템파일명' 컬럼이 없습니다. 포스터가 표시되지 않습니다.");
 
                                 // 데이터 배열을 JSON 객체 배열로 변환
                                 loadedData = rawData.slice(1).map(row => {
@@ -981,6 +1022,7 @@
                                         price: isNaN(priceVal) ? 0 : priceVal,
                                         nScreen: nScreenIdx !== -1 ? String(row[nScreenIdx]) : 'NO',
                                         serviceStart: serviceStartIdx !== -1 ? parseServiceStartKey(row[serviceStartIdx]) : 0,
+                                        img: (imgPathIdx !== -1 && imgFileIdx !== -1) ? joinPosterPath(row[imgPathIdx], row[imgFileIdx]) : '',
                                     };
                                 });
                                 
@@ -2126,6 +2168,8 @@
 
                                                         {/* 💡 [수정] 방영예정작일 때는 '-' 및 '대기중' 텍스트 노출 */}
                                                         <div className="flex items-end gap-2 mb-3">
+                                                            {/* 🖼️ [추가] B tv 편성 매칭된 작품만 포스터 (제목 줄은 그래프 때문에 좁아서 시청률 줄 왼쪽에 둠) */}
+                                                            {item.isMatched && <PosterThumb img={posterById.get(item.id)} w={56} h={80} className="mr-1" />}
                                                             <div className="flex flex-col">
                                                                 <span className="text-[10px] font-bold text-gray-400 mb-0.5">{isUpcoming ? '상태' : '최신화 시청률'}</span>
                                                                 <span className={`font-extrabold tracking-tighter leading-none ${isUpcoming ? 'text-lg text-emerald-700' : 'text-2xl text-gray-800'}`}>
@@ -2382,7 +2426,10 @@
                                                         {selectedItems.has(item.id) ? <CheckSquare size={18} className="text-blue-500"/> : <Square size={18}/>}
                                                     </div>
                                                 </div>
-                                        
+
+                                                {/* 🖼️ [추가] 포스터 (수동 추가 등 DB 밖 항목은 ID로 다시 찾음) */}
+                                                <PosterThumb img={item.img || posterById.get(item.id)} />
+
                                                 {/* 중앙: 콘텐츠 정보 */}
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex justify-between items-start gap-4">
@@ -2867,6 +2914,8 @@
                             <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={(e) => e.target === e.currentTarget && setSelectedLivePick(null)}>
                                 <div className="bg-white w-full max-w-lg rounded-3xl p-8 space-y-6 shadow-2xl animate-slide-up">
                                     <div className="flex justify-between items-start border-b border-gray-100 pb-4">
+                                        {/* 🖼️ [추가] 매칭된 작품 포스터 (팝업은 조금 크게) */}
+                                        {selectedLivePick.isMatched && <PosterThumb img={posterById.get(selectedLivePick.id)} w={72} h={103} size="240_342" className="mr-4" />}
                                         <div className="flex-1 pr-4">
                                             <div className="flex items-center gap-2 mb-2 flex-wrap">
                                                 <span className="bg-gray-800 text-white text-[10px] px-2 py-0.5 rounded font-bold">{selectedLivePick.channel}</span>
