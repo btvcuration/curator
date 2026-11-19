@@ -41,7 +41,7 @@ window.addEventListener("message", (event) => {
     const saveCache = () => { try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch (e) {} };
 
     // 상태: ok / no_ncms(NCMS 탭 없음) / no_login(로그인 안 됨) / no_ext(확장 연결 끊김)
-    let lastStatus = "ok", lastFailAt = 0, busy = false;
+    let lastStatus = "ok", lastDetail = "", lastFailAt = 0, busy = false;
     const pending = new Set();
     const STATUS_TEXT = {
         no_ncms: "NCMS 탭을 열고 로그인하면 포스터가 보여요 (클릭: 다시 시도)",
@@ -66,7 +66,7 @@ window.addEventListener("message", (event) => {
         const id = box.dataset.ncmsPoster;
         const u = cached(id);
         // 상태가 바뀔 때만 다시 그림 (그리기 자체가 MutationObserver를 다시 깨우므로 반복 방지)
-        const key = u ? "img:" + u : u === "" ? "none" : lastStatus !== "ok" ? "fail:" + lastStatus : "wait";
+        const key = u ? "img:" + u : u === "" ? "none" : lastStatus !== "ok" ? "fail:" + lastStatus + lastDetail : "wait";
         if (box.dataset.key === key || (box.dataset.state === "noimg" && key === "img:" + u)) return;
         box.dataset.key = key;
         if (u) {
@@ -80,7 +80,7 @@ window.addEventListener("message", (event) => {
         } else if (u === "") {
             box.dataset.state = "none"; box.textContent = "포스터 없음"; box.title = id; box.style.cursor = "default";
         } else if (lastStatus !== "ok") {
-            box.dataset.state = "fail"; box.textContent = "NCMS"; box.title = STATUS_TEXT[lastStatus] || ""; box.style.cursor = "pointer";
+            box.dataset.state = "fail"; box.textContent = "NCMS"; box.title = (STATUS_TEXT[lastStatus] || "포스터 조회 실패 (클릭: 다시 시도)") + (lastDetail ? " / 원인: " + lastDetail : ""); box.style.cursor = "pointer";
         } else {
             box.dataset.state = "wait"; box.textContent = "…"; box.title = "포스터 불러오는 중";
         }
@@ -105,7 +105,11 @@ window.addEventListener("message", (event) => {
     let timer = null;
     const schedule = (ms) => { clearTimeout(timer); timer = setTimeout(fetchPending, ms); };
     const repaint = () => document.querySelectorAll("[data-ncms-poster]").forEach(paint);
-    const fail = (st) => { lastStatus = st; lastFailAt = now(); repaint(); };
+    const fail = (st, detail) => {
+        lastStatus = st; lastDetail = detail || ""; lastFailAt = now();
+        console.warn("[AI Curator] 포스터 조회 실패:", st, lastDetail);
+        repaint();
+    };
 
     const fetchPending = () => {
         if (busy || !pending.size) return;
@@ -116,19 +120,20 @@ window.addEventListener("message", (event) => {
         try {
             chrome.runtime.sendMessage({ type: "NCMS_POSTERS", ids }, (res) => {
                 busy = false;
-                if (chrome.runtime.lastError || !res) return fail("no_ext");
-                if (res.status !== "ok") return fail(res.status || "no_ncms");
-                lastStatus = "ok";
+                if (chrome.runtime.lastError || !res) return fail("no_ext", chrome.runtime.lastError?.message || "백그라운드 응답 없음");
+                if (res.status !== "ok") return fail(res.status || "error", res.detail);
+                lastStatus = "ok"; lastDetail = "";
                 ids.forEach((id) => { pending.delete(id); cache[id] = { u: (res.posters && res.posters[id]) || "", t: now() }; });
                 saveCache();
                 repaint();
                 if (pending.size) schedule(0);
             });
-        } catch (e) { busy = false; fail("no_ext"); }
+        } catch (e) { busy = false; fail("no_ext", e?.message); }
     };
 
-    let raf = 0;
-    new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; scan(); }); })
+    // 화면 변화를 모아서 처리. requestAnimationFrame은 탭이 안 보이면 멈추므로 타이머 사용
+    let tick = 0;
+    new MutationObserver(() => { if (!tick) tick = setTimeout(() => { tick = 0; scan(); }, 80); })
         .observe(document.body, { childList: true, subtree: true });
     scan();
 })();

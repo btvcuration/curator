@@ -70,15 +70,23 @@ async function runBuildOnUrl(tabId, url, typeName) {
 //  - NCMS 탭이 없으면 no_ncms, 로그인 화면이면 no_login
 const NCMS_ORIGIN = "https://ncms.skbroadband.com:8443";
 
-async function findNcmsTab() {
-    const tabs = await chrome.tabs.query({ url: NCMS_ORIGIN + "/*" });
-    return tabs.find(t => /\/contents\//.test(t.url || "")) || tabs[0] || null;
+// 주소 패턴(포트 포함)에 기대지 않고 전체 탭에서 직접 고름. 타이틀 관리 등 /contents/ 화면을 먼저 시도
+async function findNcmsTabs() {
+    const tabs = await chrome.tabs.query({});
+    return tabs.filter(t => (t.url || "").startsWith(NCMS_ORIGIN + "/"))
+        .sort((a, b) => (/\/contents\//.test(b.url) ? 1 : 0) - (/\/contents\//.test(a.url) ? 1 : 0));
 }
 
 // NCMS 페이지 안(MAIN world)에서 실행: NCMS Hub 통합검색과 같은 방식으로 포스터 주소 조립
 async function ncmsPosterLookup(ids) {
-    const csrf = document.querySelector("input[name='_csrf']")?.value;
-    if (!csrf || typeof $ === "undefined" || !$.post) return { status: "no_login" };
+    const csrf = document.querySelector("input[name='_csrf']")?.value
+        || document.querySelector("meta[name='_csrf']")?.content || "";
+    if (!csrf) return { status: "no_login", detail: "이 NCMS 화면에 보안 토큰(_csrf)이 없음: " + location.pathname };
+    // jQuery가 없는 화면이면 fetch로 같은 요청을 보냄
+    const rawPost = (url, data) => (typeof $ !== "undefined" && $.post)
+        ? new Promise(res => $.post(url, data).done(d => res(d)).fail(() => res(null)))
+        : fetch(url, { method: "POST", credentials: "include", headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" }, body: new URLSearchParams(data) })
+            .then(r => r.text()).then(t => { try { return JSON.parse(t); } catch (e) { return t; } }).catch(() => null);
 
     const catPath = (m) => {
         m = m || "";
@@ -107,12 +115,11 @@ async function ncmsPosterLookup(ids) {
         walk(obj); return found;
     };
     let objs = 0, htmls = 0;
-    const post = (url, data) => new Promise(res => {
-        $.post(url, { ...data, _csrf: csrf }).done(d => {
-            if (d && typeof d === "object") objs++; else htmls++;
-            res(d && typeof d === "object" ? d : null);
-        }).fail(() => res(null));
-    });
+    const post = async (url, data) => {
+        const d = await rawPost(url, { ...data, _csrf: csrf });
+        if (d && typeof d === "object") objs++; else if (typeof d === "string") htmls++;
+        return d && typeof d === "object" ? d : null;
+    };
 
     const one = async (id) => {
         for (const api of ["/contents/title/titleSelect.json", "/contents/season/seasonSelect.json"]) {
@@ -139,7 +146,8 @@ async function ncmsPosterLookup(ids) {
         while (next < ids.length) { const id = ids[next++]; posters[id] = await one(id); }
     }));
     // 응답이 전부 HTML(로그인 화면 등)이면 세션 만료로 봄
-    if (!objs && htmls) return { status: "no_login" };
+    if (!objs && htmls) return { status: "no_login", detail: "NCMS 응답이 로그인 화면(HTML)으로 옴: 세션 만료 가능" };
+    if (!objs) return { status: "error", detail: "NCMS 조회 요청이 모두 실패함 (" + ids.length + "건)" };
     return { status: "ok", posters };
 }
 
@@ -147,15 +155,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type !== "NCMS_POSTERS") return;
     const ids = (Array.isArray(request.ids) ? request.ids : []).map(String).filter(id => /^CS\w+$/.test(id)).slice(0, 60);
     (async () => {
-        try {
-            const tab = await findNcmsTab();
-            if (!tab) return sendResponse({ status: "no_ncms" });
-            const r = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: ncmsPosterLookup, args: [ids] });
-            sendResponse(r?.[0]?.result || { status: "no_login" });
-        } catch (e) {
-            console.warn("[AI Curator] 포스터 조회 실패:", e);
-            sendResponse({ status: "no_ncms" });
+        const tabs = await findNcmsTabs().catch(() => []);
+        if (!tabs.length) return sendResponse({ status: "no_ncms", detail: "열려 있는 NCMS 탭(" + NCMS_ORIGIN + ")이 없음" });
+        // 열린 NCMS 탭을 차례로 시도: 토큰 없는 화면이면 다음 탭으로
+        let last = { status: "no_login", detail: "" };
+        for (const tab of tabs) {
+            try {
+                const r = await chrome.scripting.executeScript({ target: { tabId: tab.id }, world: "MAIN", func: ncmsPosterLookup, args: [ids] });
+                const res = r?.[0]?.result || { status: "error", detail: "NCMS 탭에서 결과를 받지 못함" };
+                if (res.status === "ok") return sendResponse(res);
+                last = res;
+            } catch (e) {
+                last = { status: "error", detail: "NCMS 탭 스크립트 실행 실패: " + (e?.message || e) };
+            }
         }
+        console.warn("[AI Curator] 포스터 조회 실패:", last);
+        sendResponse(last);
     })();
     return true; // 비동기 응답
 });
